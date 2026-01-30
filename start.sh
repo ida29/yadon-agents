@@ -52,52 +52,68 @@ wait_for_claude() {
     echo -e "${YELLOW}Warning${NC}: Claude may not be ready in $target"
 }
 
-# エージェント設定（ペイン番号:名前:指示）
+# エージェント設定（名前:指示）
 declare -a AGENTS=(
     "ヤドキング:instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください"
     "ヤドラン:instructions/yadoran.md を読んで、ヤドランとして振る舞ってください"
     "ヤドン1:instructions/yadon.md を読んで、ヤドン1として振る舞ってください。あなたの番号は1です。"
     "ヤドン2:instructions/yadon.md を読んで、ヤドン2として振る舞ってください。あなたの番号は2です。"
     "ヤドン3:instructions/yadon.md を読んで、ヤドン3として振る舞ってください。あなたの番号は3です。"
-    "ヤドン4:instructions/yadon.md を読んで、ヤドン4として振る舞ってください。あなたの番号は4です。"
-    "ヤドン5:instructions/yadon.md を読んで、ヤドン5として振る舞ってください。あなたの番号は5です。"
-    "ヤドン6:instructions/yadon.md を読んで、ヤドン6として振る舞ってください。あなたの番号は6です。"
-    "ヤドン7:instructions/yadon.md を読んで、ヤドン7として振る舞ってください。あなたの番号は7です。"
-    "ヤドン8:instructions/yadon_pokoa.md を読んで、ヤドン8として振る舞ってください。あなたの番号は8です。"
+    "ヤドン4:instructions/yadon_pokoa.md を読んで、ヤドン4として振る舞ってください。あなたの番号は4です。"
 )
 
 # セッション作成（大きめのサイズ）
 tmux new-session -d -s yadon -x 400 -y 100 -c "$SCRIPT_DIR"
 
-# 10ペインを作成（最初の1つは既にある）
-echo "ペインを作成中..."
-for i in {1..9}; do
-    tmux split-window -t yadon -c "$SCRIPT_DIR"
-    tmux select-layout -t yadon tiled  # 毎回tiledにしてスペースを確保
-done
+# レイアウト作成
+# ┌───────────┬───────────┐
+# │ ヤドキング │  ヤドラン  │  (各1/4 = 50%幅)
+# ├─────┬─────┼─────┬─────┤
+# │ Y1  │ Y2  │ Y3  │ Y4  │  (各1/8 = 25%幅)
+# └─────┴─────┴─────┴─────┘
 
-# ペインIDを取得
+echo "ペインを作成中..."
+
+# 上下に分割（50:50）
+tmux split-window -v -t yadon -c "$SCRIPT_DIR" -p 50
+
+# ペインIDを取得して操作
+PANES=($(tmux list-panes -t yadon -F '#{pane_id}'))
+
+# 上段（PANES[0]）を左右に分割（ヤドキング | ヤドラン）
+tmux split-window -h -t "${PANES[0]}" -c "$SCRIPT_DIR" -p 50
+
+# 下段（PANES[1]）を4分割（ヤドン1-4）
+tmux split-window -h -t "${PANES[1]}" -c "$SCRIPT_DIR" -p 75
+
+PANES=($(tmux list-panes -t yadon -F '#{pane_id}'))
+tmux split-window -h -t "${PANES[3]}" -c "$SCRIPT_DIR" -p 66
+
+PANES=($(tmux list-panes -t yadon -F '#{pane_id}'))
+tmux split-window -h -t "${PANES[4]}" -c "$SCRIPT_DIR" -p 50
+
+# 最終的なペインIDを取得
 PANE_IDS=($(tmux list-panes -t yadon -F '#{pane_id}'))
 
 # 各ペインにタイトルを設定
-NAMES=("ヤドキング" "ヤドラン" "ヤドン1" "ヤドン2" "ヤドン3" "ヤドン4" "ヤドン5" "ヤドン6" "ヤドン7" "ヤドン8")
-for i in {0..9}; do
+NAMES=("ヤドキング" "ヤドラン" "ヤドン1" "ヤドン2" "ヤドン3" "ヤドン4")
+for i in {0..5}; do
     tmux select-pane -t "${PANE_IDS[$i]}" -T "${NAMES[$i]}"
 done
 
 # ペインタイトルを表示する設定
 tmux set-option -t yadon pane-border-status top
-tmux set-option -t yadon pane-border-format "#{pane_index}:#{pane_title}"
+tmux set-option -t yadon pane-border-format " #{pane_index}: #{pane_title} "
 
 # 全ペインでClaudeを起動（並列、許可確認スキップ）
 echo "Claudeを起動中..."
-for i in {0..9}; do
+for i in {0..5}; do
     tmux send-keys -t "${PANE_IDS[$i]}" "claude --dangerously-skip-permissions" Enter
 done
 
 # 全Claudeの起動を待機
 echo "起動を待機中..."
-for i in {0..9}; do
+for i in {0..5}; do
     IFS=':' read -r name instruction <<< "${AGENTS[$i]}"
     echo -n "  $name..."
     wait_for_claude "${PANE_IDS[$i]}"
@@ -106,7 +122,7 @@ done
 
 # 各ペインに指示を送信
 echo "指示を送信中..."
-for i in {0..9}; do
+for i in {0..5}; do
     IFS=':' read -r name instruction <<< "${AGENTS[$i]}"
     tmux send-keys -t "${PANE_IDS[$i]}" "$instruction"
     sleep 0.3
@@ -120,9 +136,12 @@ tmux select-pane -t "${PANE_IDS[0]}"
 echo ""
 echo -e "${GREEN}OK${NC} 起動完了"
 echo ""
-echo "レイアウト (10ペイン tiled):"
-echo "  0:ヤドキング  1:ヤドラン  2:ヤドン1  3:ヤドン2  4:ヤドン3"
-echo "  5:ヤドン4     6:ヤドン5   7:ヤドン6  8:ヤドン7  9:ヤドン8(pokoa)"
+echo "レイアウト:"
+echo "  ┌───────────┬───────────┐"
+echo "  │ ヤドキング │  ヤドラン  │"
+echo "  ├─────┬─────┼─────┬─────┤"
+echo "  │ Y1  │ Y2  │ Y3  │ Y4  │"
+echo "  └─────┴─────┴─────┴─────┘"
 echo ""
 echo "操作方法:"
 echo ""
