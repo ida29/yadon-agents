@@ -71,8 +71,6 @@ yadon-agent/
 │   └── global_context.md
 ├── templates/
 │   └── context_template.md
-├── status/
-│   └── master_status.yaml
 ├── skills/                   # スキル格納
 └── docs/
     └── dashboard.md          # リアルタイムダッシュボード
