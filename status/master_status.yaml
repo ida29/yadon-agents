@@ -12,10 +12,6 @@ system:
     yadon2: idle
     yadon3: idle
     yadon4: idle
-    yadon5: idle
-    yadon6: idle
-    yadon7: idle
-    yadon8: idle
 
 current_project:
   name: ""

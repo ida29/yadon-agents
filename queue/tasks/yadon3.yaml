@@ -1,14 +1,25 @@
 # ヤドラン → ヤドン${i} タスクファイル
 
-timestamp: ""
+timestamp: "2026-01-30T12:05:00"
 from: yadoran
 to: yadon3
-status: empty  # empty / new / in_progress / completed / blocked
+status: completed  # empty / new / in_progress / completed / blocked
 task:
-  id: ""
-  summary: ""
-  details: ""
-  files_to_edit: []
-  acceptance_criteria: []
+  id: "task-003"
+  summary: "queue/tasks/ から yadon5〜8.yaml を削除"
+  details: |
+    queue/tasks/ ディレクトリ内に
+    yadon5.yaml、yadon6.yaml、yadon7.yaml、yadon8.yaml が
+    存在するか確認し、存在すれば削除してください。
+
+    存在しない場合は、その旨を報告してください。
+  files_to_edit:
+    - queue/tasks/yadon5.yaml (存在する場合)
+    - queue/tasks/yadon6.yaml (存在する場合)
+    - queue/tasks/yadon7.yaml (存在する場合)
+    - queue/tasks/yadon8.yaml (存在する場合)
+  acceptance_criteria:
+    - yadon1〜4.yaml のみ存在する
+    - yadon5〜8.yaml が存在しない
   depends_on: []
-  notes: ""
+  notes: "...よろしく〜...ファイル削除だよ〜..."

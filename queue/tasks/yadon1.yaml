@@ -1,14 +1,34 @@
 # ヤドラン → ヤドン${i} タスクファイル
 
-timestamp: ""
+timestamp: "2026-01-30T16:35:00"
 from: yadoran
 to: yadon1
-status: empty  # empty / new / in_progress / completed / blocked
+status: in_progress  # empty / new / in_progress / completed / blocked
 task:
-  id: ""
-  summary: ""
-  details: ""
+  id: "task-005"
+  summary: "4体体制統一の変更をgit commitする"
+  details: |
+    4体体制への統一作業が完了したので、変更をコミットしてください。
+
+    対象ファイル：
+    - config/settings.yaml
+    - status/master_status.yaml
+    - docs/dashboard.md
+    - queue/ 配下のファイル
+
+    手順：
+    1. git status で変更を確認
+    2. git add で変更をステージング（必要なファイルのみ）
+    3. git commit でコミット
+
+    コミットメッセージ：
+    「ヤドンを4体体制に統一
+
+    Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>」
   files_to_edit: []
-  acceptance_criteria: []
+  acceptance_criteria:
+    - 変更がコミットされている
+    - コミットメッセージが「ヤドンを4体体制に統一」になっている
+    - Co-Authored-By が含まれている
   depends_on: []
-  notes: ""
+  notes: "...よろしく〜...git commitだよ〜...丁寧にね〜..."

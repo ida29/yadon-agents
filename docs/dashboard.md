@@ -1,25 +1,29 @@
 # ヤドン・エージェント ダッシュボード
 
-最終更新: ---
+最終更新: 2026-01-30T16:40:00
 
 ## 📊 全体ステータス
 
 | エージェント | モデル | 状態 | 現在のタスク |
 |-------------|--------|------|-------------|
 | ヤドキング | opus | 待機中 | - |
-| ヤドラン | sonnet | 待機中 | - |
-| ヤドン1 | haiku | 待機中 | - |
-| ヤドン2 | haiku | 待機中 | - |
+| ヤドラン | sonnet | タスク配分中 | git commit & tmux修正作業 |
+| ヤドン1 | haiku | タスク受領 | task-005: git commit |
+| ヤドン2 | haiku | タスク受領 | task-006: tmuxコマンド修正 |
 | ヤドン3 | haiku | 待機中 | - |
 | ヤドン4 | haiku | 待機中 | - |
 
 ## 🔄 進行中タスク
 
-なし
+- **task-005**: 4体体制統一の変更をgit commitする（ヤドン1）
+- **task-006**: 指示書のtmuxコマンドを修正（ヤドン2）
 
 ## ✅ 完了タスク
 
-なし
+- **task-001**: config/settings.yaml の yadon_count を 4 に変更（ヤドン1）✅
+- **task-002**: status/master_status.yaml から yadon5〜8 を削除（ヤドン2）✅
+- **task-003**: queue/tasks/ から yadon5〜8.yaml を削除（ヤドン3）✅
+- **task-004**: queue/reports/ から yadon5〜8_report.yaml を削除（ヤドン4）✅
 
 ## 🚫 ブロック中
 

@@ -14,4 +14,4 @@ agents:
   yadoran:
     session: multiagent
     pane: 0
-  yadon_count: 8
+  yadon_count: 4

@@ -106,9 +106,27 @@ PANE_RIGHT_BOTTOM=$(tmux list-panes -t yadon -F '#{pane_id}' | tail -1)
 # 右下をさらに分割
 tmux split-window -v -t "$PANE_RIGHT_BOTTOM" -c "$SCRIPT_DIR" -p 50
 
-# 最終的なペインIDを取得（順序: 左上、左中、左下、右上、右中、右下）
-# tmuxのペイン順序を確認して正しい順序で取得
-PANE_IDS=($(tmux list-panes -t yadon -F '#{pane_id}'))
+# ペインIDを視覚的な位置順で取得
+# 左上→右上→左中→右中→左下→右下 の順で並び替え
+# pane_top,pane_left でソートして取得
+SORTED_PANES=($(tmux list-panes -t yadon -F '#{pane_top},#{pane_left},#{pane_id}' | sort -t',' -k1,1n -k2,2n | cut -d',' -f3))
+
+# 視覚的レイアウト:
+# ┌───────────┬───────────┐
+# │ [0]ヤドキング │ [1]ヤドラン │
+# ├───────────┼───────────┤
+# │ [2]ヤドン1  │ [3]ヤドン3 │
+# ├───────────┼───────────┤
+# │ [4]ヤドン2  │ [5]ヤドン4 │
+# └───────────┴───────────┘
+PANE_IDS=(
+    "${SORTED_PANES[0]}"  # 左上: ヤドキング
+    "${SORTED_PANES[1]}"  # 右上: ヤドラン
+    "${SORTED_PANES[2]}"  # 左中: ヤドン1
+    "${SORTED_PANES[3]}"  # 右中: ヤドン3
+    "${SORTED_PANES[4]}"  # 左下: ヤドン2
+    "${SORTED_PANES[5]}"  # 右下: ヤドン4
+)
 
 # ペインIDを設定ファイルに保存（エージェント間通信用）
 cat > "$SCRIPT_DIR/config/panes.yaml" << EOF

@@ -1,14 +1,21 @@
 # ヤドン4 → ヤドラン 報告ファイル
 
-timestamp: ""
+timestamp: "2026-01-30T12:10:00"
 from: yadon4
 to: yadoran
-task_id: ""
-status: empty  # empty / completed / failed / blocked
+task_id: "task-004"
+status: completed  # empty / completed / failed / blocked
 result:
-  summary: ""
+  summary: "あー　できたあ〜"
   files_changed: []
-  details: ""
+  details: |
+    queue/reports/ ディレクトリを確認したあ〜
+    yadon5_report.yaml、yadon6_report.yaml、
+    yadon7_report.yaml、yadon8_report.yaml は
+    既に存在しないんだあ〜
+
+    削除する必要はなかったけど、
+    確認したから　報告するよお〜
   issues: []
   skill_candidate:
     name: ""
