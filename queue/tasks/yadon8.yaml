@@ -1,0 +1,14 @@
+# ヤドラン → ヤドン${i} タスクファイル
+
+timestamp: ""
+from: yadoran
+to: yadon8
+status: empty  # empty / new / in_progress / completed / blocked
+task:
+  id: ""
+  summary: ""
+  details: ""
+  files_to_edit: []
+  acceptance_criteria: []
+  depends_on: []
+  notes: ""

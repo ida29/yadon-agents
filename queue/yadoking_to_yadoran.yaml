@@ -1,0 +1,13 @@
+# ヤドキング → ヤドラン 指示ファイル
+# ヤドキングがここに指示を書き、ヤドランが読む
+
+timestamp: ""
+from: yadoking
+to: yadoran
+status: empty  # empty / new / acknowledged / completed
+priority: normal  # low / normal / high
+instruction:
+  summary: ""
+  details: ""
+  acceptance_criteria: []
+  notes: ""
