@@ -57,43 +57,36 @@ wait_for_claude() {
     echo "Warning: Claude may not be ready in pane $pane"
 }
 
-# ペイン0: ヤドキング（左上・大きめ）
+# 全ペインを先に作成
+echo "ペインを作成中..."
+for i in {1..9}; do
+    tmux split-window -t yadon -c "$SCRIPT_DIR"
+done
+tmux select-layout -t yadon tiled
+
+# 各ペインでClaudeを起動して指示を送信
 echo -e "${GREEN}ヤドキング${NC} を配置..."
 tmux send-keys -t yadon:0.0 "claude" Enter
 wait_for_claude "yadon:0.0"
 tmux send-keys -t yadon:0.0 "instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください" Enter
 
-sleep 1
-
-# ペイン1: ヤドラン（右側）
 echo -e "${GREEN}ヤドラン${NC} を配置..."
-tmux split-window -h -t yadon -c "$SCRIPT_DIR"
 tmux send-keys -t yadon:0.1 "claude" Enter
 wait_for_claude "yadon:0.1"
 tmux send-keys -t yadon:0.1 "instructions/yadoran.md を読んで、ヤドランとして振る舞ってください" Enter
 
-sleep 1
-
-# ペイン2-9: ヤドン×8（下部に並べる）
 echo -e "${GREEN}ヤドン x8${NC} を配置..."
 for i in {1..7}; do
     pane_num=$((i + 1))
-    tmux split-window -v -t yadon -c "$SCRIPT_DIR"
     tmux send-keys -t yadon:0.${pane_num} "claude" Enter
     wait_for_claude "yadon:0.${pane_num}"
     tmux send-keys -t yadon:0.${pane_num} "instructions/yadon.md を読んで、ヤドン${i}として振る舞ってください。あなたの番号は${i}です。" Enter
-    sleep 1
 done
 
 # ヤドン8はぽこあポケモン風ヤドン
-tmux split-window -v -t yadon -c "$SCRIPT_DIR"
 tmux send-keys -t yadon:0.9 "claude" Enter
 wait_for_claude "yadon:0.9"
 tmux send-keys -t yadon:0.9 "instructions/yadon_pokoa.md を読んで、ヤドン8として振る舞ってください。あなたの番号は8です。" Enter
-sleep 1
-
-# レイアウト調整: tiledで均等配置
-tmux select-layout -t yadon tiled
 
 # ヤドキングのペインを選択状態に
 tmux select-pane -t yadon:0.0
