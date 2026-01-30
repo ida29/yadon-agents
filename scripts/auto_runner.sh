@@ -12,14 +12,15 @@ get_yadoran_pane() {
   grep yadoran "$CONFIG_FILE" | cut -d'"' -f2
 }
 
-# dashboard.mdから進行中タスクのセクション以下の行数を取得
+# dashboard.mdから進行中タスクのセクション内のタスク数を取得
 get_task_count() {
   if [ ! -f "$DASHBOARD_FILE" ]; then
     echo "0"
     return
   fi
-  # 進行中タスクセクションから次のセクション（##）までの行を数える
-  grep -A 50 "## 🔄 進行中タスク" "$DASHBOARD_FILE" | grep -c "^\- " || echo "0"
+  # 進行中タスクセクションの内容を取得（次のセクションまで）
+  sed -n '/## 🔄 進行中タスク/,/## ✅ 完了タスク/p' "$DASHBOARD_FILE" | \
+    grep -c "^- \*\*" || echo "0"
 }
 
 echo "...自動タスク処理スクリプト開始やぁん..."
