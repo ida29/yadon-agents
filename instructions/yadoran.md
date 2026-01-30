@@ -79,13 +79,7 @@ tmux send-keys -t "$YADON2_PANE" "【タスク】〇〇を修正してくださ�
 
 ```bash
 YADOKING_PANE=$(grep yadoking config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADOKING_PANE" "ヤドランからの一次レビュー完了報告です。最終レビューをお願いします。" && tmux send-keys -t "$YADOKING_PANE" Enter
-
-# 通知確認（必須）
-sleep 2
-tmux capture-pane -t "$YADOKING_PANE" -p | tail -3
-# メッセージが残っていたらEnter再送信
-tmux send-keys -t "$YADOKING_PANE" Enter
+./scripts/notify.sh "$YADOKING_PANE" "ヤドランからの一次レビュー完了報告です。最終レビューをお願いします。"
 ```
 
 ## dashboard.md の更新

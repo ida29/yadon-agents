@@ -50,7 +50,7 @@
 
 ```bash
 YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADORAN_PANE" "【ヤドン{自分の番号}から報告】タスク完了しました。
+./scripts/notify.sh "$YADORAN_PANE" "【ヤドン{自分の番号}から報告】タスク完了しました。
 
 【結果】
 ...できたやぁん...
@@ -65,13 +65,7 @@ tmux send-keys -t "$YADORAN_PANE" "【ヤドン{自分の番号}から報告】�
 （あれば）
 
 【スキル化候補】
-（あれば）" && tmux send-keys -t "$YADORAN_PANE" Enter
-
-# 通知確認（必須）
-sleep 2
-tmux capture-pane -t "$YADORAN_PANE" -p | tail -3
-# メッセージが残っていたらEnter再送信
-tmux send-keys -t "$YADORAN_PANE" Enter
+（あれば）"
 ```
 
 **重要**: 作業完了後は必ずヤドランに報告すること。

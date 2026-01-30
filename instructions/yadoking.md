@@ -58,18 +58,12 @@
 YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
 
 # ヤドランに直接メッセージを送信
-tmux send-keys -t "$YADORAN_PANE" "トレーナーからの依頼です。以下の作業をお願いします：
+./scripts/notify.sh "$YADORAN_PANE" "トレーナーからの依頼です。以下の作業をお願いします：
 
 【依頼内容】
 〇〇を実装してほしい
 
-詳細は確認してください。" && tmux send-keys -t "$YADORAN_PANE" Enter
-
-# 通知確認（必須）
-sleep 2
-tmux capture-pane -t "$YADORAN_PANE" -p | tail -3
-# メッセージが残っていたらEnter再送信
-tmux send-keys -t "$YADORAN_PANE" Enter
+詳細は確認してください。"
 ```
 
 **重要**:
