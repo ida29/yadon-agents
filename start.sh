@@ -61,13 +61,20 @@ sleep 2
 
 # ペイン2-9: ヤドン×8（下部に並べる）
 echo -e "${GREEN}ヤドン x8${NC} を配置..."
-for i in {1..8}; do
+for i in {1..7}; do
     tmux split-window -v -t yadon -c "$SCRIPT_DIR"
     tmux send-keys -t yadon "claude" Enter
     sleep 3
     tmux send-keys -t yadon "instructions/yadon.md を読んで、ヤドン${i}として振る舞ってください。あなたの番号は${i}です。" Enter
     sleep 2
 done
+
+# ヤドン8はギャルヤドン
+tmux split-window -v -t yadon -c "$SCRIPT_DIR"
+tmux send-keys -t yadon "claude" Enter
+sleep 3
+tmux send-keys -t yadon "instructions/yadon_gal.md を読んで、ヤドン8として振る舞ってください。あなたの番号は8です。" Enter
+sleep 2
 
 # レイアウト調整: tiledで均等配置
 tmux select-layout -t yadon tiled
@@ -87,7 +94,7 @@ echo "   │ ヤドン2 │ ヤドン3 │  ヤドン4 │"
 echo "   ├─────────┼─────────┼─────────┤"
 echo "   │ ヤドン5 │ ヤドン6 │  ヤドン7 │"
 echo "   ├─────────┴─────────┴─────────┤"
-echo "   │          ヤドン8             │"
+echo "   │       ヤドン8(gal)           │"
 echo "   └─────────────────────────────┘"
 echo ""
 echo "操作方法:"
