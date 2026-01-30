@@ -69,11 +69,11 @@ for i in {1..7}; do
     sleep 2
 done
 
-# ヤドン8はギャルヤドン
+# ヤドン8はぽこあポケモン風ヤドン
 tmux split-window -v -t yadon -c "$SCRIPT_DIR"
 tmux send-keys -t yadon "claude" Enter
 sleep 3
-tmux send-keys -t yadon "instructions/yadon_gal.md を読んで、ヤドン8として振る舞ってください。あなたの番号は8です。" Enter
+tmux send-keys -t yadon "instructions/yadon_pokoa.md を読んで、ヤドン8として振る舞ってください。あなたの番号は8です。" Enter
 sleep 2
 
 # レイアウト調整: tiledで均等配置
@@ -94,7 +94,7 @@ echo "   │ ヤドン2 │ ヤドン3 │  ヤドン4 │"
 echo "   ├─────────┼─────────┼─────────┤"
 echo "   │ ヤドン5 │ ヤドン6 │  ヤドン7 │"
 echo "   ├─────────┴─────────┴─────────┤"
-echo "   │       ヤドン8(gal)           │"
+echo "   │      ヤドン8(pokoa)          │"
 echo "   └─────────────────────────────┘"
 echo ""
 echo "操作方法:"
