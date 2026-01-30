@@ -52,7 +52,7 @@ wait_for_claude() {
     echo -e "${YELLOW}Warning${NC}: Claude may not be ready in $target"
 }
 
-# エージェント設定
+# エージェント設定（ペイン番号:名前:指示）
 declare -a AGENTS=(
     "ヤドキング:instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください"
     "ヤドラン:instructions/yadoran.md を読んで、ヤドランとして振る舞ってください"
@@ -66,63 +66,60 @@ declare -a AGENTS=(
     "ヤドン8:instructions/yadon_pokoa.md を読んで、ヤドン8として振る舞ってください。あなたの番号は8です。"
 )
 
-# 各エージェント用のウィンドウを作成
-for i in "${!AGENTS[@]}"; do
-    IFS=':' read -r name instruction <<< "${AGENTS[$i]}"
+# セッション作成（大きめのサイズ）
+tmux new-session -d -s yadon -x 400 -y 100 -c "$SCRIPT_DIR"
 
-    if [ $i -eq 0 ]; then
-        # 最初のエージェント: セッション作成
-        tmux new-session -d -s yadon -n "$name" -x 200 -y 50 -c "$SCRIPT_DIR"
-    else
-        # 2番目以降: ウィンドウ追加
-        tmux new-window -t yadon -n "$name" -c "$SCRIPT_DIR"
-    fi
+# 10ペインを作成（最初の1つは既にある）
+echo "ペインを作成中..."
+for i in {1..9}; do
+    tmux split-window -t yadon -c "$SCRIPT_DIR"
+    tmux select-layout -t yadon tiled  # 毎回tiledにしてスペースを確保
 done
 
-# 全ウィンドウでClaudeを起動
+# ペインIDを取得
+PANE_IDS=($(tmux list-panes -t yadon -F '#{pane_id}'))
+
+# 全ペインでClaudeを起動（並列）
 echo "Claudeを起動中..."
-for i in "${!AGENTS[@]}"; do
-    IFS=':' read -r name instruction <<< "${AGENTS[$i]}"
-    tmux send-keys -t "yadon:$name" "claude" Enter
+for i in {0..9}; do
+    tmux send-keys -t "${PANE_IDS[$i]}" "claude" Enter
 done
 
 # 全Claudeの起動を待機
 echo "起動を待機中..."
-for i in "${!AGENTS[@]}"; do
+for i in {0..9}; do
     IFS=':' read -r name instruction <<< "${AGENTS[$i]}"
     echo -n "  $name..."
-    wait_for_claude "yadon:$name"
+    wait_for_claude "${PANE_IDS[$i]}"
     echo " OK"
 done
 
-# 各ウィンドウに指示を送信
+# 各ペインに指示を送信
 echo "指示を送信中..."
-for i in "${!AGENTS[@]}"; do
+for i in {0..9}; do
     IFS=':' read -r name instruction <<< "${AGENTS[$i]}"
-    tmux send-keys -t "yadon:$name" "$instruction"
-    sleep 0.5
-    tmux send-keys -t "yadon:$name" Enter
+    tmux send-keys -t "${PANE_IDS[$i]}" "$instruction"
+    sleep 0.3
+    tmux send-keys -t "${PANE_IDS[$i]}" Enter
     echo "  $name に指示を送信"
-    sleep 0.5
 done
 
-# ヤドキングのウィンドウを選択
-tmux select-window -t "yadon:ヤドキング"
+# 最初のペイン（ヤドキング）を選択
+tmux select-pane -t "${PANE_IDS[0]}"
 
 echo ""
 echo -e "${GREEN}OK${NC} 起動完了"
 echo ""
-echo "ウィンドウ一覧:"
-echo "  0: ヤドキング"
-echo "  1: ヤドラン"
-echo "  2-9: ヤドン1-8 (ヤドン8はpokoa風)"
+echo "レイアウト (10ペイン tiled):"
+echo "  0:ヤドキング  1:ヤドラン  2:ヤドン1  3:ヤドン2  4:ヤドン3"
+echo "  5:ヤドン4     6:ヤドン5   7:ヤドン6  8:ヤドン7  9:ヤドン8(pokoa)"
 echo ""
 echo "操作方法:"
 echo ""
 echo "   Ctrl+b d       : デタッチ（バックグラウンドに戻す）"
-echo "   Ctrl+b n/p     : 次/前のウィンドウ"
-echo "   Ctrl+b 0-9     : ウィンドウ番号で移動"
-echo "   Ctrl+b w       : ウィンドウ一覧"
+echo "   Ctrl+b 矢印    : ペイン移動"
+echo "   Ctrl+b q       : ペイン番号を表示"
+echo "   Ctrl+b z       : ペインをズーム（もう一度で戻る）"
 echo ""
 echo "接続しますか？ [Y/n]"
 read -r response
