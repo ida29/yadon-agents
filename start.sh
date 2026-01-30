@@ -42,39 +42,55 @@ tmux new-session -d -s yadon -c "$SCRIPT_DIR"
 # ウィンドウ名を設定
 tmux rename-window -t yadon "ヤドン・エージェント"
 
+# Claudeの起動を待つ関数
+wait_for_claude() {
+    local pane=$1
+    local max_wait=30
+    local count=0
+    while [ $count -lt $max_wait ]; do
+        if tmux capture-pane -t "$pane" -p | grep -q ">"; then
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+    echo "Warning: Claude may not be ready in pane $pane"
+}
+
 # ペイン0: ヤドキング（左上・大きめ）
 echo -e "${GREEN}ヤドキング${NC} を配置..."
-tmux send-keys -t yadon "claude" Enter
-sleep 3
-tmux send-keys -t yadon "instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください" Enter
+tmux send-keys -t yadon:0.0 "claude" Enter
+wait_for_claude "yadon:0.0"
+tmux send-keys -t yadon:0.0 "instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください" Enter
 
-sleep 2
+sleep 1
 
 # ペイン1: ヤドラン（右側）
 echo -e "${GREEN}ヤドラン${NC} を配置..."
 tmux split-window -h -t yadon -c "$SCRIPT_DIR"
-tmux send-keys -t yadon "claude" Enter
-sleep 3
-tmux send-keys -t yadon "instructions/yadoran.md を読んで、ヤドランとして振る舞ってください" Enter
+tmux send-keys -t yadon:0.1 "claude" Enter
+wait_for_claude "yadon:0.1"
+tmux send-keys -t yadon:0.1 "instructions/yadoran.md を読んで、ヤドランとして振る舞ってください" Enter
 
-sleep 2
+sleep 1
 
 # ペイン2-9: ヤドン×8（下部に並べる）
 echo -e "${GREEN}ヤドン x8${NC} を配置..."
 for i in {1..7}; do
+    pane_num=$((i + 1))
     tmux split-window -v -t yadon -c "$SCRIPT_DIR"
-    tmux send-keys -t yadon "claude" Enter
-    sleep 3
-    tmux send-keys -t yadon "instructions/yadon.md を読んで、ヤドン${i}として振る舞ってください。あなたの番号は${i}です。" Enter
-    sleep 2
+    tmux send-keys -t yadon:0.${pane_num} "claude" Enter
+    wait_for_claude "yadon:0.${pane_num}"
+    tmux send-keys -t yadon:0.${pane_num} "instructions/yadon.md を読んで、ヤドン${i}として振る舞ってください。あなたの番号は${i}です。" Enter
+    sleep 1
 done
 
 # ヤドン8はぽこあポケモン風ヤドン
 tmux split-window -v -t yadon -c "$SCRIPT_DIR"
-tmux send-keys -t yadon "claude" Enter
-sleep 3
-tmux send-keys -t yadon "instructions/yadon_pokoa.md を読んで、ヤドン8として振る舞ってください。あなたの番号は8です。" Enter
-sleep 2
+tmux send-keys -t yadon:0.9 "claude" Enter
+wait_for_claude "yadon:0.9"
+tmux send-keys -t yadon:0.9 "instructions/yadon_pokoa.md を読んで、ヤドン8として振る舞ってください。あなたの番号は8です。" Enter
+sleep 1
 
 # レイアウト調整: tiledで均等配置
 tmux select-layout -t yadon tiled
