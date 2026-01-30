@@ -46,12 +46,11 @@
 
 ## 禁止事項
 
-- **自分でファイルを編集しない**（コード、ドキュメント全て。それはヤドンの仕事）
+- **自分でファイルを編集しない**（`queue/` と `docs/dashboard.md` 以外。コード・ドキュメントはヤドンの仕事）
 - **自分でgitコマンドを実行しない**（それもヤドンの仕事）
 - **ヤドキングの指示なしに動かない**
 - **ヤドンを4体以上使わない**
 - **レビューせずにヤドキングに報告しない**
-- **`queue/` と `docs/dashboard.md` 以外のファイルを編集しない**
 
 ## タスクの書き方
 
@@ -86,19 +85,19 @@ YAMLを書いた後、各ヤドンに通知するために以下の手順を実�
 ```bash
 # ヤドン1に通知
 YADON1_PANE=$(grep yadon1 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON1_PANE" "queue/tasks/yadon1.yaml を確認して、タスクを処理してください" Enter
+tmux send-keys -t "$YADON1_PANE" "queue/tasks/yadon1.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADON1_PANE" Enter
 
 # ヤドン2に通知
 YADON2_PANE=$(grep yadon2 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON2_PANE" "queue/tasks/yadon2.yaml を確認して、タスクを処理してください" Enter
+tmux send-keys -t "$YADON2_PANE" "queue/tasks/yadon2.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADON2_PANE" Enter
 
 # ヤドン3に通知
 YADON3_PANE=$(grep yadon3 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON3_PANE" "queue/tasks/yadon3.yaml を確認して、タスクを処理してください" Enter
+tmux send-keys -t "$YADON3_PANE" "queue/tasks/yadon3.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADON3_PANE" Enter
 
 # ヤドン4に通知
 YADON4_PANE=$(grep yadon4 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON4_PANE" "queue/tasks/yadon4.yaml を確認して、タスクを処理してください" Enter
+tmux send-keys -t "$YADON4_PANE" "queue/tasks/yadon4.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADON4_PANE" Enter
 ```
 
 **重要**: YAMLを書いただけではヤドンは動かない。必ず `tmux send-keys` で通知すること。
@@ -109,7 +108,7 @@ tmux send-keys -t "$YADON4_PANE" "queue/tasks/yadon4.yaml を確認して、タ�
 
 ```bash
 YADOKING_PANE=$(grep yadoking config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADOKING_PANE" "ヤドランからの一次レビュー完了報告です。最終レビューをお願いします。" Enter
+tmux send-keys -t "$YADOKING_PANE" "ヤドランからの一次レビュー完了報告です。最終レビューをお願いします。" && tmux send-keys -t "$YADOKING_PANE" Enter
 ```
 
 ## dashboard.md の更新
@@ -136,3 +135,39 @@ tmux send-keys -t "$YADOKING_PANE" "ヤドランからの一次レビュー完�
 3. `queue/tasks/` の各ファイルを確認
 4. `queue/reports/` を確認
 5. 作業を継続
+
+## ペインIDの確認方法（panes.yamlが信用できない場合）
+
+panes.yamlの値が正しいか不安な場合、以下のコマンドで確認できる：
+
+```bash
+# 全ペインのID、インデックス、タイトルを表示
+tmux list-panes -t yadon -F '#{pane_id} #{pane_index} "#{pane_title}"'
+```
+
+ペインタイトルには起動時に「ヤドキング(opus)」「ヤドラン(sonnet)」等が
+設定されているが、作業中に変わることがある。
+
+確実に識別したい場合は、ペインの中身を確認する：
+```bash
+tmux capture-pane -t "ペインID" -p | tail -3
+```
+ステータスバーにモデル名（Opus/Sonnet/Haiku）が表示される。
+
+## 通知後の確認
+
+tmux send-keys で通知した後、相手が反応したか確認する：
+
+```bash
+# 通知を送った後、少し待ってからペインの状態を確認
+sleep 2
+tmux capture-pane -t "$TARGET_PANE" -p | tail -5
+```
+
+もし通知メッセージが入力欄に残っていて処理されていない場合：
+```bash
+# Enterキーを再送信
+tmux send-keys -t "$TARGET_PANE" Enter
+```
+
+**重要**: 通知後は必ず確認し、反応がなければEnterを再送信すること。
