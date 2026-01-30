@@ -52,14 +52,17 @@ wait_for_claude() {
     echo -e "${YELLOW}Warning${NC}: Claude may not be ready in $target"
 }
 
-# エージェント設定（名前:指示）
+# エージェント設定（名前:モデル:指示）
+# ヤドキング: opus（戦略立案）
+# ヤドラン: sonnet（タスク分解・管理）
+# ヤドン: haiku（実作業）
 declare -a AGENTS=(
-    "ヤドキング:instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください"
-    "ヤドラン:instructions/yadoran.md を読んで、ヤドランとして振る舞ってください"
-    "ヤドン1:instructions/yadon.md を読んで、ヤドン1として振る舞ってください。あなたの番号は1です。"
-    "ヤドン2:instructions/yadon.md を読んで、ヤドン2として振る舞ってください。あなたの番号は2です。"
-    "ヤドン3:instructions/yadon.md を読んで、ヤドン3として振る舞ってください。あなたの番号は3です。"
-    "ヤドン4:instructions/yadon_pokoa.md を読んで、ヤドン4として振る舞ってください。あなたの番号は4です。"
+    "ヤドキング:opus:instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください"
+    "ヤドラン:sonnet:instructions/yadoran.md を読んで、ヤドランとして振る舞ってください"
+    "ヤドン1:haiku:instructions/yadon.md を読んで、ヤドン1として振る舞ってください。あなたの番号は1です。"
+    "ヤドン2:haiku:instructions/yadon.md を読んで、ヤドン2として振る舞ってください。あなたの番号は2です。"
+    "ヤドン3:haiku:instructions/yadon.md を読んで、ヤドン3として振る舞ってください。あなたの番号は3です。"
+    "ヤドン4:haiku:instructions/yadon_pokoa.md を読んで、ヤドン4として振る舞ってください。あなたの番号は4です。"
 )
 
 # セッション作成（大きめのサイズ）
@@ -107,27 +110,28 @@ tmux split-window -v -t "$PANE_RIGHT_BOTTOM" -c "$SCRIPT_DIR" -p 50
 # tmuxのペイン順序を確認して正しい順序で取得
 PANE_IDS=($(tmux list-panes -t yadon -F '#{pane_id}'))
 
-# 各ペインにタイトルを設定
-NAMES=("ヤドキング" "ヤドラン" "ヤドン1" "ヤドン2" "ヤドン3" "ヤドン4")
+# 各ペインにタイトルを設定（名前とモデル）
+TITLES=("ヤドキング(opus)" "ヤドラン(sonnet)" "ヤドン1(haiku)" "ヤドン2(haiku)" "ヤドン3(haiku)" "ヤドン4(haiku)")
 for i in {0..5}; do
-    tmux select-pane -t "${PANE_IDS[$i]}" -T "${NAMES[$i]}"
+    tmux select-pane -t "${PANE_IDS[$i]}" -T "${TITLES[$i]}"
 done
 
 # ペインタイトルを表示する設定
 tmux set-option -t yadon pane-border-status top
 tmux set-option -t yadon pane-border-format " #{pane_index}: #{pane_title} "
 
-# 全ペインでClaudeを起動（並列、許可確認スキップ）
+# 全ペインでClaudeを起動（並列、許可確認スキップ、モデル指定）
 echo "Claudeを起動中..."
 for i in {0..5}; do
-    tmux send-keys -t "${PANE_IDS[$i]}" "claude --dangerously-skip-permissions" Enter
+    IFS=':' read -r name model instruction <<< "${AGENTS[$i]}"
+    tmux send-keys -t "${PANE_IDS[$i]}" "claude --dangerously-skip-permissions --model $model" Enter
 done
 
 # 全Claudeの起動を待機
 echo "起動を待機中..."
 for i in {0..5}; do
-    IFS=':' read -r name instruction <<< "${AGENTS[$i]}"
-    echo -n "  $name..."
+    IFS=':' read -r name model instruction <<< "${AGENTS[$i]}"
+    echo -n "  $name ($model)..."
     wait_for_claude "${PANE_IDS[$i]}"
     echo " OK"
 done
@@ -135,7 +139,7 @@ done
 # 各ペインに指示を送信
 echo "指示を送信中..."
 for i in {0..5}; do
-    IFS=':' read -r name instruction <<< "${AGENTS[$i]}"
+    IFS=':' read -r name model instruction <<< "${AGENTS[$i]}"
     tmux send-keys -t "${PANE_IDS[$i]}" "$instruction"
     sleep 0.3
     tmux send-keys -t "${PANE_IDS[$i]}" Enter
