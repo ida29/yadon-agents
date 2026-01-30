@@ -74,25 +74,37 @@ tmux new-session -d -s yadon -x 400 -y 100 -c "$SCRIPT_DIR"
 
 echo "ペインを作成中..."
 
-# 上下に分割（50:50）
-tmux split-window -v -t yadon -c "$SCRIPT_DIR" -p 50
+# レイアウト:
+# ┌───────────┬───────────┐
+# │ ヤドキング │  ヤドラン  │  (各1/4 高さ)
+# ├───────────┼───────────┤
+# │  ヤドン1   │  ヤドン3   │  (各1/8 高さ)
+# ├───────────┼───────────┤
+# │  ヤドン2   │  ヤドン4   │  (各1/8 高さ)
+# └───────────┴───────────┘
 
-# ペインIDを取得して操作
-PANES=($(tmux list-panes -t yadon -F '#{pane_id}'))
+# まず左右に分割（50:50）
+tmux split-window -h -t yadon -c "$SCRIPT_DIR" -p 50
 
-# 上段（PANES[0]）を左右に分割（ヤドキング | ヤドラン）
-tmux split-window -h -t "${PANES[0]}" -c "$SCRIPT_DIR" -p 50
+# 左側（ペイン0）を縦に3分割
+# ヤドキング(50%) | ヤドン1(25%) | ヤドン2(25%)
+PANE_LEFT=$(tmux list-panes -t yadon -F '#{pane_id}' | head -1)
+PANE_RIGHT=$(tmux list-panes -t yadon -F '#{pane_id}' | tail -1)
 
-# 下段（PANES[1]）を4分割（ヤドン1-4）
-tmux split-window -h -t "${PANES[1]}" -c "$SCRIPT_DIR" -p 75
+# 左側: 下半分を分割
+tmux split-window -v -t "$PANE_LEFT" -c "$SCRIPT_DIR" -p 50
+PANE_LEFT_BOTTOM=$(tmux list-panes -t yadon -F '#{pane_id}' | sed -n '2p')
+# 左下をさらに分割
+tmux split-window -v -t "$PANE_LEFT_BOTTOM" -c "$SCRIPT_DIR" -p 50
 
-PANES=($(tmux list-panes -t yadon -F '#{pane_id}'))
-tmux split-window -h -t "${PANES[3]}" -c "$SCRIPT_DIR" -p 66
+# 右側: 下半分を分割
+tmux split-window -v -t "$PANE_RIGHT" -c "$SCRIPT_DIR" -p 50
+PANE_RIGHT_BOTTOM=$(tmux list-panes -t yadon -F '#{pane_id}' | tail -1)
+# 右下をさらに分割
+tmux split-window -v -t "$PANE_RIGHT_BOTTOM" -c "$SCRIPT_DIR" -p 50
 
-PANES=($(tmux list-panes -t yadon -F '#{pane_id}'))
-tmux split-window -h -t "${PANES[4]}" -c "$SCRIPT_DIR" -p 50
-
-# 最終的なペインIDを取得
+# 最終的なペインIDを取得（順序: 左上、左中、左下、右上、右中、右下）
+# tmuxのペイン順序を確認して正しい順序で取得
 PANE_IDS=($(tmux list-panes -t yadon -F '#{pane_id}'))
 
 # 各ペインにタイトルを設定
@@ -139,9 +151,11 @@ echo ""
 echo "レイアウト:"
 echo "  ┌───────────┬───────────┐"
 echo "  │ ヤドキング │  ヤドラン  │"
-echo "  ├─────┬─────┼─────┬─────┤"
-echo "  │ Y1  │ Y2  │ Y3  │ Y4  │"
-echo "  └─────┴─────┴─────┴─────┘"
+echo "  ├───────────┼───────────┤"
+echo "  │  ヤドン1   │  ヤドン3   │"
+echo "  ├───────────┼───────────┤"
+echo "  │  ヤドン2   │  ヤドン4   │"
+echo "  └───────────┴───────────┘"
 echo ""
 echo "操作方法:"
 echo ""
