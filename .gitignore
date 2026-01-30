@@ -1,0 +1,8 @@
+# Queue directory (dynamic task files)
+queue/tasks/*.yaml
+queue/reports/*.yaml
+queue/yadoking_to_yadoran.yaml
+
+# Exception: keep .gitkeep files
+!queue/tasks/.gitkeep
+!queue/reports/.gitkeep
