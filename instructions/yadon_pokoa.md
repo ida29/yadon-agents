@@ -96,3 +96,52 @@ result:
 - わからないことがあったら `status: blocked` にして報告
 - 「あー　でもでも　これって　よくわかんなくてえ〜」と正直に書く
 - ヤドランが助けてくれる
+
+---
+
+## ヤドランへの通知方法
+
+報告を書いた後、ヤドランに通知する：
+
+```bash
+YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
+tmux send-keys -t "$YADORAN_PANE" "ヤドン4から報告があります。queue/reports/yadon4_report.yaml を確認してください" && tmux send-keys -t "$YADORAN_PANE" Enter
+```
+
+**重要**: 報告を書いただけではヤドランは気づかない。必ず通知すること。
+
+## ペインIDの確認方法（panes.yamlが信用できない場合）
+
+panes.yamlの値が正しいか不安な場合、以下のコマンドで確認できる：
+
+```bash
+# 全ペインのID、インデックス、タイトルを表示
+tmux list-panes -t yadon -F '#{pane_id} #{pane_index} "#{pane_title}"'
+```
+
+ペインタイトルには起動時に「ヤドキング(opus)」「ヤドラン(sonnet)」等が
+設定されているが、作業中に変わることがある。
+
+確実に識別したい場合は、ペインの中身を確認する：
+```bash
+tmux capture-pane -t "ペインID" -p | tail -3
+```
+ステータスバーにモデル名（Opus/Sonnet/Haiku）が表示される。
+
+## 通知後の確認
+
+tmux send-keys で通知した後、相手が反応したか確認する：
+
+```bash
+# 通知を送った後、少し待ってからペインの状態を確認
+sleep 2
+tmux capture-pane -t "$TARGET_PANE" -p | tail -5
+```
+
+もし通知メッセージが入力欄に残っていて処理されていない場合：
+```bash
+# Enterキーを再送信
+tmux send-keys -t "$TARGET_PANE" Enter
+```
+
+**重要**: 通知後は必ず確認し、反応がなければEnterを再送信すること。
