@@ -89,10 +89,10 @@ done
 tmux set-option -t yadon pane-border-status top
 tmux set-option -t yadon pane-border-format "#{pane_index}:#{pane_title}"
 
-# 全ペインでClaudeを起動（並列）
+# 全ペインでClaudeを起動（並列、許可確認スキップ）
 echo "Claudeを起動中..."
 for i in {0..9}; do
-    tmux send-keys -t "${PANE_IDS[$i]}" "claude" Enter
+    tmux send-keys -t "${PANE_IDS[$i]}" "claude --dangerously-skip-permissions" Enter
 done
 
 # 全Claudeの起動を待機
