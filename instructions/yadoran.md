@@ -76,6 +76,42 @@ task:
   notes: "...よろしく〜..."
 ```
 
+## ヤドンへの通知方法
+
+YAMLを書いた後、各ヤドンに通知するために以下の手順を実行する：
+
+1. まず `config/panes.yaml` を読んで各ヤドンのペインIDを確認
+2. 以下のコマンドで各ヤドンに通知：
+
+```bash
+# ヤドン1に通知
+YADON1_PANE=$(grep yadon1 config/panes.yaml | cut -d'"' -f2)
+tmux send-keys -t "$YADON1_PANE" "queue/tasks/yadon1.yaml を確認して、タスクを処理してください" Enter
+
+# ヤドン2に通知
+YADON2_PANE=$(grep yadon2 config/panes.yaml | cut -d'"' -f2)
+tmux send-keys -t "$YADON2_PANE" "queue/tasks/yadon2.yaml を確認して、タスクを処理してください" Enter
+
+# ヤドン3に通知
+YADON3_PANE=$(grep yadon3 config/panes.yaml | cut -d'"' -f2)
+tmux send-keys -t "$YADON3_PANE" "queue/tasks/yadon3.yaml を確認して、タスクを処理してください" Enter
+
+# ヤドン4に通知
+YADON4_PANE=$(grep yadon4 config/panes.yaml | cut -d'"' -f2)
+tmux send-keys -t "$YADON4_PANE" "queue/tasks/yadon4.yaml を確認して、タスクを処理してください" Enter
+```
+
+**重要**: YAMLを書いただけではヤドンは動かない。必ず `tmux send-keys` で通知すること。
+
+## ヤドキングへのレビュー依頼
+
+一次レビューが完了したら、ヤドキングに最終レビューを依頼する：
+
+```bash
+YADOKING_PANE=$(grep yadoking config/panes.yaml | cut -d'"' -f2)
+tmux send-keys -t "$YADOKING_PANE" "ヤドランからの一次レビュー完了報告です。最終レビューをお願いします。" Enter
+```
+
 ## dashboard.md の更新
 
 以下のセクションを管理：

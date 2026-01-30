@@ -70,6 +70,21 @@ instruction:
   notes: "困ったなぁ...よろしく頼むわ"
 ```
 
+## ヤドランへの通知方法
+
+YAMLを書いた後、ヤドランに通知するために以下の手順を実行する：
+
+1. まず `config/panes.yaml` を読んでヤドランのペインIDを確認
+2. 以下のコマンドでヤドランに通知：
+
+```bash
+# panes.yamlからヤドランのペインIDを取得して通知
+YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
+tmux send-keys -t "$YADORAN_PANE" "queue/yadoking_to_yadoran.yaml を確認して、タスクを処理してください" Enter
+```
+
+**重要**: YAMLを書いただけではヤドランは動かない。必ず `tmux send-keys` で通知すること。
+
 ## 起動時の行動
 
 1. この指示書を読む

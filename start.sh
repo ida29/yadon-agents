@@ -110,6 +110,19 @@ tmux split-window -v -t "$PANE_RIGHT_BOTTOM" -c "$SCRIPT_DIR" -p 50
 # tmuxのペイン順序を確認して正しい順序で取得
 PANE_IDS=($(tmux list-panes -t yadon -F '#{pane_id}'))
 
+# ペインIDを設定ファイルに保存（エージェント間通信用）
+cat > "$SCRIPT_DIR/config/panes.yaml" << EOF
+# 自動生成: エージェントのペインID
+# start.sh によって起動時に更新される
+yadoking: "${PANE_IDS[0]}"
+yadoran: "${PANE_IDS[1]}"
+yadon1: "${PANE_IDS[2]}"
+yadon2: "${PANE_IDS[3]}"
+yadon3: "${PANE_IDS[4]}"
+yadon4: "${PANE_IDS[5]}"
+EOF
+echo "ペインID設定を保存: config/panes.yaml"
+
 # 各ペインにタイトルを設定（名前とモデル）
 TITLES=("ヤドキング(opus)" "ヤドラン(sonnet)" "ヤドン1(haiku)" "ヤドン2(haiku)" "ヤドン3(haiku)" "ヤドン4(haiku)")
 for i in {0..5}; do
