@@ -79,6 +79,16 @@ done
 # ペインIDを取得
 PANE_IDS=($(tmux list-panes -t yadon -F '#{pane_id}'))
 
+# 各ペインにタイトルを設定
+NAMES=("ヤドキング" "ヤドラン" "ヤドン1" "ヤドン2" "ヤドン3" "ヤドン4" "ヤドン5" "ヤドン6" "ヤドン7" "ヤドン8")
+for i in {0..9}; do
+    tmux select-pane -t "${PANE_IDS[$i]}" -T "${NAMES[$i]}"
+done
+
+# ペインタイトルを表示する設定
+tmux set-option -t yadon pane-border-status top
+tmux set-option -t yadon pane-border-format "#{pane_index}:#{pane_title}"
+
 # 全ペインでClaudeを起動（並列）
 echo "Claudeを起動中..."
 for i in {0..9}; do
