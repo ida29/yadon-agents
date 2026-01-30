@@ -45,10 +45,12 @@ tmux rename-window -t yadon "ヤドン・エージェント"
 # Claudeの起動を待つ関数
 wait_for_claude() {
     local pane=$1
-    local max_wait=30
+    local max_wait=60
     local count=0
     while [ $count -lt $max_wait ]; do
-        if tmux capture-pane -t "$pane" -p | grep -q ">"; then
+        # Claude Code特有の表示を検出
+        if tmux capture-pane -t "$pane" -p | grep -qE "(^>|Tips for|Claude Code)"; then
+            sleep 1
             return 0
         fi
         sleep 1
@@ -64,28 +66,33 @@ for i in {1..9}; do
 done
 tmux select-layout -t yadon tiled
 
-# 各ペインでClaudeを起動して指示を送信
-echo -e "${GREEN}ヤドキング${NC} を配置..."
-tmux send-keys -t yadon:0.0 "claude" Enter
-wait_for_claude "yadon:0.0"
+# 全ペインでClaudeを起動（並列）
+echo "Claudeを起動中..."
+for i in {0..9}; do
+    tmux send-keys -t yadon:0.${i} "claude" Enter
+done
+
+# 全Claudeの起動を待つ
+echo "起動を待機中..."
+for i in {0..9}; do
+    wait_for_claude "yadon:0.${i}"
+    echo "  ペイン${i} 準備完了"
+done
+
+# 各ペインに指示を送信
+echo -e "${GREEN}ヤドキング${NC} に指示..."
 tmux send-keys -t yadon:0.0 "instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください" Enter
 
-echo -e "${GREEN}ヤドラン${NC} を配置..."
-tmux send-keys -t yadon:0.1 "claude" Enter
-wait_for_claude "yadon:0.1"
+echo -e "${GREEN}ヤドラン${NC} に指示..."
 tmux send-keys -t yadon:0.1 "instructions/yadoran.md を読んで、ヤドランとして振る舞ってください" Enter
 
-echo -e "${GREEN}ヤドン x8${NC} を配置..."
+echo -e "${GREEN}ヤドン x8${NC} に指示..."
 for i in {1..7}; do
     pane_num=$((i + 1))
-    tmux send-keys -t yadon:0.${pane_num} "claude" Enter
-    wait_for_claude "yadon:0.${pane_num}"
     tmux send-keys -t yadon:0.${pane_num} "instructions/yadon.md を読んで、ヤドン${i}として振る舞ってください。あなたの番号は${i}です。" Enter
 done
 
 # ヤドン8はぽこあポケモン風ヤドン
-tmux send-keys -t yadon:0.9 "claude" Enter
-wait_for_claude "yadon:0.9"
 tmux send-keys -t yadon:0.9 "instructions/yadon_pokoa.md を読んで、ヤドン8として振る舞ってください。あなたの番号は8です。" Enter
 
 # ヤドキングのペインを選択状態に
