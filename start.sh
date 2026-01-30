@@ -48,8 +48,8 @@ wait_for_claude() {
     local max_wait=60
     local count=0
     while [ $count -lt $max_wait ]; do
-        # Claude Code特有の表示を検出
-        if tmux capture-pane -t "$pane" -p | grep -qE "(^>|Tips for|Claude Code)"; then
+        # Claude Codeのバナーを検出
+        if tmux capture-pane -t "$pane" -p | grep -q "Claude Code"; then
             sleep 1
             return 0
         fi
