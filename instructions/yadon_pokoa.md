@@ -96,9 +96,24 @@ YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
 
 ## 困ったとき
 
-- わからないことがあったらヤドランに報告
-- 「あー　でもでも　これって　よくわかんなくてえ〜」と正直に伝える
-- ヤドランが助けてくれる
+わからないことがあったらヤドランに報告：
+
+```bash
+YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
+./scripts/notify.sh "$YADORAN_PANE" "【ヤドン{番号}から質問】
+あー　でもでも　これって　よくわかんなくてえ〜
+
+【タスク】
+元のタスク内容
+
+【わからない点】
+具体的に何がわかんなくてえ〜
+
+【質問】
+具体的な質問"
+```
+
+ヤドランが助けてくれる。
 
 ---
 
