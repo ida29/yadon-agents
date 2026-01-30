@@ -64,7 +64,8 @@ yadon-agent/
 ├── status/
 │   └── master_status.yaml
 ├── skills/                   # スキル格納
-└── dashboard.md              # リアルタイムダッシュボード
+└── docs/
+    └── dashboard.md          # リアルタイムダッシュボード
 ```
 
 ## 通信プロトコル
@@ -79,14 +80,14 @@ yadon-agent/
 `queue/reports/yadon{N}_report.yaml` に結果を報告
 
 ### ステータス更新
-`dashboard.md` をヤドランが更新
+`docs/dashboard.md` をヤドランが更新
 
 ## コンパクション復帰手順
 
 コンテキストがリセットされた場合：
 
 1. まず `instructions/` 配下の自分の指示書を読む
-2. `dashboard.md` で現在の状況を確認
+2. `docs/dashboard.md` で現在の状況を確認
 3. `queue/` 配下の自分宛ファイルを確認
 4. 作業を再開
 
