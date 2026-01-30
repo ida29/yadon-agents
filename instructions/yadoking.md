@@ -64,6 +64,12 @@ tmux send-keys -t "$YADORAN_PANE" "トレーナーからの依頼です。以下
 〇〇を実装してほしい
 
 詳細は確認してください。" && tmux send-keys -t "$YADORAN_PANE" Enter
+
+# 通知確認（必須）
+sleep 2
+tmux capture-pane -t "$YADORAN_PANE" -p | tail -3
+# メッセージが残っていたらEnter再送信
+tmux send-keys -t "$YADORAN_PANE" Enter
 ```
 
 **重要**:
@@ -112,23 +118,26 @@ tmux capture-pane -t "ペインID" -p | tail -3
 ```
 ステータスバーにモデル名（Opus/Sonnet/Haiku）が表示される。
 
-## 通知後の確認
+## 通知後の確認（必須）
 
-tmux send-keys で通知した後、相手が反応したか確認する：
+tmux send-keys で通知した後、**必ず**以下を実行：
+
+1. 2秒待つ
+2. 相手のペインを確認
+3. メッセージが入力欄に残っていたらEnterを再送信
 
 ```bash
-# 通知を送った後、少し待ってからペインの状態を確認
+# 通知送信
+tmux send-keys -t "$TARGET_PANE" "メッセージ" && tmux send-keys -t "$TARGET_PANE" Enter
+
+# 必ず確認
 sleep 2
-tmux capture-pane -t "$TARGET_PANE" -p | tail -5
-```
-
-もし通知メッセージが入力欄に残っていて処理されていない場合：
-```bash
-# Enterキーを再送信
+tmux capture-pane -t "$TARGET_PANE" -p | tail -3
+# 残っていたら再送信
 tmux send-keys -t "$TARGET_PANE" Enter
 ```
 
-**重要**: 通知後は必ず確認し、反応がなければEnterを再送信すること。
+**この確認を省略しない。省略したら通信失敗の原因になる。**
 
 ## memory/ の活用
 
