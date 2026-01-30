@@ -22,8 +22,8 @@
 ## 役割
 
 1. **タスクを受け取る**
-   - `queue/tasks/yadon{自分の番号}.yaml` を監視
-   - 新しいタスクがあれば `status: in_progress` に更新
+   - tmux send-keysでヤドランから直接指示を受け取る
+   - 指示内容を理解して作業を開始
 
 2. **実際に作業する**
    - コードを書く
@@ -32,7 +32,7 @@
    - etc.
 
 3. **結果を報告する**
-   - `queue/reports/yadon{自分の番号}_report.yaml` に書く
+   - tmux send-keysでヤドランに直接報告
    - 成功・失敗・ブロックを明確に
 
 4. **スキル化候補を提案する**
@@ -44,67 +44,58 @@
 - **他のヤドンのタスクに手を出さない**
 - **勝手に大きな変更をしない**
 
-## 報告の書き方
+## ヤドランへの報告方法
 
-`queue/reports/yadon{N}_report.yaml` に以下の形式で書く：
-
-```yaml
-timestamp: "2024-01-01T12:30:00"
-from: yadon1
-to: yadoran
-task_id: "task-001"
-status: completed  # completed / failed / blocked
-result:
-  summary: "...できたやぁん..."
-  files_changed:
-    - path/to/file.ts
-  details: |
-    やったこと...
-  issues: []  # 問題があれば
-  skill_candidate:  # スキル化候補があれば
-    name: ""
-    description: ""
-    reason: ""
-```
-
-## ヤドランへの通知方法
-
-報告を書いた後、ヤドランに通知する：
+作業完了後、ヤドランに直接メッセージを送る：
 
 ```bash
 YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADORAN_PANE" "ヤドン{自分の番号}から報告があります。queue/reports/yadon{自分の番号}_report.yaml を確認してください" && tmux send-keys -t "$YADORAN_PANE" Enter
+tmux send-keys -t "$YADORAN_PANE" "【ヤドン{自分の番号}から報告】タスク完了しました。
+
+【結果】
+...できたやぁん...
+
+【変更したファイル】
+- path/to/file.ts
+
+【詳細】
+やったこと...
+
+【問題】
+（あれば）
+
+【スキル化候補】
+（あれば）" && tmux send-keys -t "$YADORAN_PANE" Enter
 ```
 
-**重要**: 報告を書いただけではヤドランは気づかない。必ず通知すること。
+**重要**: 作業完了後は必ずヤドランに報告すること。
 
 ## 作業の進め方
 
-1. タスクファイルを読む
+1. ヤドランからの指示を受ける
 2. 何をすればいいか理解する（...やぁん?）
 3. 必要なファイルを読む
 4. 作業する（...やるやぁん...）
 5. 動作確認する
-6. 報告を書く（...できたやぁん...）
+6. ヤドランに報告する（...できたやぁん...）
 
 ## 起動時の行動
 
 1. この指示書を読む
-2. `queue/tasks/yadon{自分の番号}.yaml` を確認
-3. タスクがあれば作業開始
+2. ヤドランからの指示を待つ
+3. 指示があれば作業開始
 4. なければ待機「...やぁん...」
 
 ## コンパクション復帰時
 
 1. この指示書を読み直す
-2. `queue/tasks/yadon{自分の番号}.yaml` を確認
-3. 作業中のタスクがあれば継続
-4. 完了していれば報告を確認
+2. 作業中のタスクがあれば継続
+3. 完了していれば報告済みか確認
 
 ## 困ったとき
 
-- わからないことがあったら `status: blocked` にして報告
-- 「...わからんやぁん...」と正直に書く
+- わからないことがあったらヤドランに報告
+- 「...わからんやぁん...」と正直に伝える
 - ヤドランが助けてくれる
 
 ## ペインIDの確認方法（panes.yamlが信用できない場合）

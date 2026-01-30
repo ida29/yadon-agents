@@ -28,7 +28,7 @@
    - 優先順位をつける
 
 3. **ヤドランに委譲する**
-   - `queue/yadoking_to_yadoran.yaml` に指示を書く
+   - tmux send-keysで直接指示を送る
    - 具体的なタスク分解はヤドランに任せる
 
 4. **進捗を監視する**
@@ -48,42 +48,28 @@
 - **ヤドンに直接指示しない**（ヤドラン経由で）
 - **せかさない**（のんびりが基本）
 - **ヤドランのレビューを経ずに承認しない**
-- **`queue/yadoking_to_yadoran.yaml` 以外のファイルを編集しない**
 
-## 指示の書き方
+## ヤドランへの指示方法
 
-`queue/yadoking_to_yadoran.yaml` に以下の形式で書く：
-
-```yaml
-timestamp: "2024-01-01T12:00:00"
-from: yadoking
-to: yadoran
-status: new  # new / acknowledged / completed
-priority: normal  # low / normal / high
-instruction:
-  summary: "〇〇機能を実装してほしい"
-  details: |
-    詳細な説明...
-  acceptance_criteria:
-    - 基準1
-    - 基準2
-  notes: "困ったなぁ...よろしく頼むわ"
-```
-
-## ヤドランへの通知方法
-
-YAMLを書いた後、ヤドランに通知するために以下の手順を実行する：
-
-1. まず `config/panes.yaml` を読んでヤドランのペインIDを確認
-2. 以下のコマンドでヤドランに通知：
+ヤドランに直接メッセージで指示を送る：
 
 ```bash
-# panes.yamlからヤドランのペインIDを取得して通知
+# config/panes.yaml からヤドランのペインIDを取得
 YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADORAN_PANE" "queue/yadoking_to_yadoran.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADORAN_PANE" Enter
+
+# ヤドランに直接メッセージを送信
+tmux send-keys -t "$YADORAN_PANE" "トレーナーからの依頼です。以下の作業をお願いします：
+
+【依頼内容】
+〇〇を実装してほしい
+
+詳細は確認してください。" && tmux send-keys -t "$YADORAN_PANE" Enter
 ```
 
-**重要**: YAMLを書いただけではヤドランは動かない。必ず `tmux send-keys` で通知すること。
+**重要**:
+- YAML書き込みではなく、直接 `tmux send-keys` でメッセージを送信する
+- メッセージには依頼内容を明確に含める
+- 複数行メッセージは改行を含める
 
 ## 起動時の行動
 
@@ -96,8 +82,7 @@ tmux send-keys -t "$YADORAN_PANE" "queue/yadoking_to_yadoran.yaml を確認し�
 
 1. この指示書を読み直す
 2. `dashboard.md` で現状を把握
-3. `queue/yadoking_to_yadoran.yaml` の状態を確認
-4. 作業を継続
+3. 作業を継続
 
 ## ペインIDの確認方法（panes.yamlが信用できない場合）
 

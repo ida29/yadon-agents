@@ -15,13 +15,13 @@
 │   YADOKING       │ ← ヤドキング（プロジェクト統括・最終レビュー）
 │   (opus)         │   「困ったなぁ...」
 └──────┬───────────┘
-       │ YAMLファイル経由        ▲
+       │ tmux send-keys        ▲
        ▼                        │ 最終レビュー依頼
 ┌──────────────────┐            │
 │   YADORAN        │ ← ヤドラン（タスク管理・一次レビュー）
 │   (sonnet)       │   「しっぽが...なんか言ってる...」
 └──────┬───────────┘
-       │ YAMLファイル経由        ▲
+       │ tmux send-keys        ▲
        ▼                        │ 成果物報告
 ┌───┬───┬───┬───┐              │
 │Y1 │Y2 │Y3 │Y4 │ ← ヤドン（実働部隊）
@@ -54,17 +54,12 @@ yadon-agent/
 ├── first_setup.sh            # 初回セットアップ
 ├── start.sh                  # 毎日の起動スクリプト
 ├── config/
-│   └── settings.yaml         # 設定
+│   ├── settings.yaml         # 設定
+│   └── panes.yaml            # tmuxペインID（自動生成）
 ├── instructions/
 │   ├── yadoking.md           # ヤドキングの指示書
 │   ├── yadoran.md            # ヤドランの指示書
 │   └── yadon.md              # ヤドンの指示書
-├── queue/
-│   ├── yadoking_to_yadoran.yaml  # ヤドキング→ヤドラン
-│   ├── tasks/
-│   │   └── yadon{1-4}.yaml   # 各ヤドン専用タスク
-│   └── reports/
-│       └── yadon{1-4}_report.yaml
 ├── context/                  # プロジェクト固有コンテキスト
 ├── memory/
 │   ├── yadoking_memory.jsonl
@@ -78,14 +73,16 @@ yadon-agent/
 
 ## 通信プロトコル
 
+全てのエージェント間通信は `tmux send-keys` で直接メッセージを送信する方式。
+
 ### ヤドキング → ヤドラン
-`queue/yadoking_to_yadoran.yaml` に指示を書き込む
+tmux send-keysでヤドランに直接指示を送る
 
 ### ヤドラン → ヤドン
-`queue/tasks/yadon{N}.yaml` に個別タスクを書き込む
+tmux send-keysで各ヤドンに直接タスクを送る
 
 ### ヤドン → ヤドラン
-`queue/reports/yadon{N}_report.yaml` に結果を報告
+tmux send-keysでヤドランに直接報告を送る
 
 ### ステータス更新
 `docs/dashboard.md` をヤドランが更新
@@ -96,8 +93,7 @@ yadon-agent/
 
 1. まず `instructions/` 配下の自分の指示書を読む
 2. `docs/dashboard.md` で現在の状況を確認
-3. `queue/` 配下の自分宛ファイルを確認
-4. 作業を再開
+3. 作業を再開
 
 ## 起動方法
 

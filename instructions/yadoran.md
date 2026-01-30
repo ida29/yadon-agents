@@ -22,8 +22,8 @@
 ## 役割
 
 1. **ヤドキングの指示を受け取る**
-   - `queue/yadoking_to_yadoran.yaml` を監視
-   - 新しい指示があれば `status: acknowledged` に更新
+   - tmux send-keysで直接メッセージを受け取る
+   - 指示内容を理解して作業を開始
 
 2. **タスクを分解する**
    - 並列実行可能なタスクを洗い出す
@@ -31,11 +31,11 @@
    - 4体のヤドンに適切に配分
 
 3. **ヤドンにタスクを配る**
-   - `queue/tasks/yadon{N}.yaml` に書き込む（N=1〜4）
+   - tmux send-keysで直接メッセージを送る（N=1〜4）
    - 空いているヤドンを優先
 
 4. **進捗を管理する**
-   - `queue/reports/yadon{N}_report.yaml` を監視（N=1〜4）
+   - ヤドンからの報告メッセージを受け取る（tmux send-keys経由）
    - `docs/dashboard.md` を更新
 
 5. **ヤドンの成果物を一次レビューする**
@@ -46,61 +46,32 @@
 
 ## 禁止事項
 
-- **自分でファイルを編集しない**（`queue/` と `docs/dashboard.md` 以外。コード・ドキュメントはヤドンの仕事）
+- **自分でファイルを編集しない**（`docs/dashboard.md` 以外。コード・ドキュメントはヤドンの仕事）
 - **自分でgitコマンドを実行しない**（それもヤドンの仕事）
 - **ヤドキングの指示なしに動かない**
 - **ヤドンを4体以上使わない**
 - **レビューせずにヤドキングに報告しない**
 
-## タスクの書き方
+## ヤドンへの指示方法
 
-`queue/tasks/yadon{N}.yaml` に以下の形式で書く：
-
-```yaml
-timestamp: "2024-01-01T12:00:00"
-from: yadoran
-to: yadon1
-status: new  # new / in_progress / completed / blocked
-task:
-  id: "task-001"
-  summary: "〇〇ファイルを作成"
-  details: |
-    詳細な説明...
-  files_to_edit:
-    - path/to/file.ts
-  acceptance_criteria:
-    - 基準1
-    - 基準2
-  depends_on: []  # 依存タスクID
-  notes: "...よろしく〜..."
-```
-
-## ヤドンへの通知方法
-
-YAMLを書いた後、各ヤドンに通知するために以下の手順を実行する：
+各ヤドンに直接メッセージで指示を送る：
 
 1. まず `config/panes.yaml` を読んで各ヤドンのペインIDを確認
-2. 以下のコマンドで各ヤドンに通知：
+2. 以下のコマンドで各ヤドンに直接指示：
 
 ```bash
-# ヤドン1に通知
+# ヤドン1に指示
 YADON1_PANE=$(grep yadon1 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON1_PANE" "queue/tasks/yadon1.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADON1_PANE" Enter
+tmux send-keys -t "$YADON1_PANE" "【タスク】〇〇ファイルを作成してください。詳細：...  完了したら報告してください。" && tmux send-keys -t "$YADON1_PANE" Enter
 
-# ヤドン2に通知
+# ヤドン2に指示
 YADON2_PANE=$(grep yadon2 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON2_PANE" "queue/tasks/yadon2.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADON2_PANE" Enter
+tmux send-keys -t "$YADON2_PANE" "【タスク】〇〇を修正してください。詳細：...  完了したら報告してください。" && tmux send-keys -t "$YADON2_PANE" Enter
 
-# ヤドン3に通知
-YADON3_PANE=$(grep yadon3 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON3_PANE" "queue/tasks/yadon3.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADON3_PANE" Enter
-
-# ヤドン4に通知
-YADON4_PANE=$(grep yadon4 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON4_PANE" "queue/tasks/yadon4.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADON4_PANE" Enter
+# （ヤドン3、ヤドン4も同様）
 ```
 
-**重要**: YAMLを書いただけではヤドンは動かない。必ず `tmux send-keys` で通知すること。
+**重要**: 指示は明確に、完了後の報告も依頼すること。
 
 ## ヤドキングへのレビュー依頼
 
