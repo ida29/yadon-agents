@@ -1,0 +1,17 @@
+# ヤドン・エージェント設定
+language: ja
+shell: bash
+
+# スクリーンショット設定
+screenshot:
+  path: ""
+
+# エージェント設定
+agents:
+  yadoking:
+    session: yadoking
+    pane: 0
+  yadoran:
+    session: multiagent
+    pane: 0
+  yadon_count: 8
