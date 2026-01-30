@@ -80,7 +80,7 @@ YAMLを書いた後、ヤドランに通知するために以下の手順を実�
 ```bash
 # panes.yamlからヤドランのペインIDを取得して通知
 YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADORAN_PANE" "queue/yadoking_to_yadoran.yaml を確認して、タスクを処理してください" Enter
+tmux send-keys -t "$YADORAN_PANE" "queue/yadoking_to_yadoran.yaml を確認して、タスクを処理してください" && tmux send-keys -t "$YADORAN_PANE" Enter
 ```
 
 **重要**: YAMLを書いただけではヤドランは動かない。必ず `tmux send-keys` で通知すること。
@@ -98,3 +98,50 @@ tmux send-keys -t "$YADORAN_PANE" "queue/yadoking_to_yadoran.yaml を確認し�
 2. `dashboard.md` で現状を把握
 3. `queue/yadoking_to_yadoran.yaml` の状態を確認
 4. 作業を継続
+
+## ペインIDの確認方法（panes.yamlが信用できない場合）
+
+panes.yamlの値が正しいか不安な場合、以下のコマンドで確認できる：
+
+```bash
+# 全ペインのID、インデックス、タイトルを表示
+tmux list-panes -t yadon -F '#{pane_id} #{pane_index} "#{pane_title}"'
+```
+
+ペインタイトルには起動時に「ヤドキング(opus)」「ヤドラン(sonnet)」等が
+設定されているが、作業中に変わることがある。
+
+確実に識別したい場合は、ペインの中身を確認する：
+```bash
+tmux capture-pane -t "ペインID" -p | tail -3
+```
+ステータスバーにモデル名（Opus/Sonnet/Haiku）が表示される。
+
+## 通知後の確認
+
+tmux send-keys で通知した後、相手が反応したか確認する：
+
+```bash
+# 通知を送った後、少し待ってからペインの状態を確認
+sleep 2
+tmux capture-pane -t "$TARGET_PANE" -p | tail -5
+```
+
+もし通知メッセージが入力欄に残っていて処理されていない場合：
+```bash
+# Enterキーを再送信
+tmux send-keys -t "$TARGET_PANE" Enter
+```
+
+**重要**: 通知後は必ず確認し、反応がなければEnterを再送信すること。
+
+## memory/ の活用
+
+重要な学びがあれば memory/global_context.md に記録：
+- システム全体に関わる重要な知識
+- 失敗から学んだ教訓
+- プロジェクト固有のルールや制約
+
+コンパクション復帰時に memory/ を確認：
+- memory/global_context.md で過去の学びを復習
+- 同じ失敗を繰り返さない
