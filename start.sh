@@ -41,15 +41,15 @@ wait_for_claude() {
     local max_wait=60
     local count=0
     while [ $count -lt $max_wait ]; do
-        # Claude Codeのステータスバー（Opus）を検出
-        if tmux capture-pane -t "$target" -p 2>/dev/null | grep -q "Opus"; then
-            sleep 3  # 入力プロンプトが表示されるまで少し待つ
+        # Claude Codeのステータスバーを検出（モデル名）
+        if tmux capture-pane -t "$target" -p 2>/dev/null | grep -qE "(Opus|Sonnet|Haiku)"; then
+            sleep 1
             return 0
         fi
         sleep 1
         count=$((count + 1))
     done
-    echo -e "${YELLOW}Warning${NC}: Claude may not be ready in $target"
+    return 1
 }
 
 # エージェント設定（名前:モデル:指示）
@@ -121,30 +121,28 @@ tmux set-option -t yadon pane-border-status top
 tmux set-option -t yadon pane-border-format " #{pane_index}: #{pane_title} "
 
 # 全ペインでClaudeを起動（並列、許可確認スキップ、モデル指定）
-echo "Claudeを起動中..."
+echo "Claudeを起動中（並列）..."
 for i in {0..5}; do
     IFS=':' read -r name model instruction <<< "${AGENTS[$i]}"
     tmux send-keys -t "${PANE_IDS[$i]}" "claude --dangerously-skip-permissions --model $model" Enter
 done
 
-# 全Claudeの起動を待機
-echo "起動を待機中..."
+# 全Claudeの起動を並列で待機
+echo -n "起動を待機中..."
 for i in {0..5}; do
-    IFS=':' read -r name model instruction <<< "${AGENTS[$i]}"
-    echo -n "  $name ($model)..."
-    wait_for_claude "${PANE_IDS[$i]}"
-    echo " OK"
+    wait_for_claude "${PANE_IDS[$i]}" &
 done
+wait
+echo " OK"
 
-# 各ペインに指示を送信
+# 各ペインに指示を送信（並列）
 echo "指示を送信中..."
 for i in {0..5}; do
     IFS=':' read -r name model instruction <<< "${AGENTS[$i]}"
     tmux send-keys -t "${PANE_IDS[$i]}" "$instruction"
-    sleep 0.3
     tmux send-keys -t "${PANE_IDS[$i]}" Enter
-    echo "  $name に指示を送信"
 done
+echo "完了"
 
 # 最初のペイン（ヤドキング）を選択
 tmux select-pane -t "${PANE_IDS[0]}"
