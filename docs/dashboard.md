@@ -23,7 +23,7 @@
 
 ---
 
-## ✅ 完了タスク（全48件）
+## ✅ 完了タスク（全52件）
 
 ### 基盤整備（5件）
 - **task-001**: config/settings.yaml の yadon_count を 4 に変更（ヤドン1）
@@ -63,9 +63,11 @@
 ### 失敗したテスト（1件）
 - **test-009**: 自動動作テスト（外部スクリプト検討で失敗）
 
-### 最新タスク（2件）
-- **improve-003**: auto_runner.sh作成 - 自動タスク検出スクリプト実装
-- **improve-004**: auto_runner.sh改善 - get_task_count()関数修正
+### ドキュメント最新化（4件）
+- **4d834b6**: Fix auto_runner.sh paths（ヤドン1）
+- **3f5fb84**: Update CLAUDE.md directory structure to match actual codebase（ヤドン1）
+- **3925332**: Add scripts section and stop.sh to CLAUDE.md（ヤドン1）
+- **9703306**: Add verification completion record（ヤドン1）
 
 ---
 
