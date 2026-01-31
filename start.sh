@@ -5,6 +5,23 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# プロジェクトディレクトリの決定（引数があればそれを使用、なければ現在のディレクトリ）
+if [ -n "$1" ]; then
+    PROJECT_DIR="$(cd "$1" && pwd)"
+else
+    PROJECT_DIR="$(pwd)"
+fi
+
+# プロジェクト名の取得（ディレクトリのbasename）
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+
+# セッション名の生成
+SESSION_NAME="yadon-$PROJECT_NAME"
+
+# panes.yaml のパス
+PANES_YAML="$SCRIPT_DIR/config/panes-$PROJECT_NAME.yaml"
+
 cd "$SCRIPT_DIR"
 
 # カラー設定
@@ -18,6 +35,10 @@ echo ""
 echo -e "${CYAN}ヤドン・エージェント 起動中...${NC}"
 echo "   困ったなぁ...でもやるか..."
 echo ""
+echo -e "${CYAN}プロジェクト:${NC} $PROJECT_NAME"
+echo -e "${CYAN}セッション名:${NC} $SESSION_NAME"
+echo -e "${CYAN}作業ディレクトリ:${NC} $PROJECT_DIR"
+echo ""
 
 # Claude Code CLI の確認
 if ! command -v claude &> /dev/null; then
@@ -27,9 +48,9 @@ if ! command -v claude &> /dev/null; then
 fi
 
 # 既存セッションの確認と終了
-if tmux has-session -t yadon 2>/dev/null; then
-    echo -e "${YELLOW}!${NC} 既存の yadon セッションを終了します..."
-    tmux kill-session -t yadon
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo -e "${YELLOW}!${NC} 既存の $SESSION_NAME セッションを終了します..."
+    tmux kill-session -t "$SESSION_NAME"
 fi
 
 echo "セッションを作成中..."
@@ -66,7 +87,7 @@ declare -a AGENTS=(
 )
 
 # セッション作成（大きめのサイズ）
-tmux new-session -d -s yadon -x 400 -y 100 -c "$SCRIPT_DIR"
+tmux new-session -d -s "$SESSION_NAME" -x 400 -y 100 -c "$PROJECT_DIR"
 
 # レイアウト作成
 # ┌───────────┬───────────┐
@@ -87,29 +108,45 @@ echo "ペインを作成中..."
 # └───────────┴───────────┘
 
 # まず左右に分割（50:50）
-tmux split-window -h -t yadon -c "$SCRIPT_DIR" -p 50
+tmux split-window -h -t yadon -c "$PROJECT_DIR" -p 50
 
 # 左側（ペイン0）を縦に3分割
 # ヤドキング(50%) | ヤドン1(25%) | ヤドン2(25%)
-PANE_LEFT=$(tmux list-panes -t yadon -F '#{pane_id}' | head -1)
-PANE_RIGHT=$(tmux list-panes -t yadon -F '#{pane_id}' | tail -1)
+PANE_LEFT=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | head -1)
+PANE_RIGHT=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | tail -1)
 
 # 左側: 下半分を分割
-tmux split-window -v -t "$PANE_LEFT" -c "$SCRIPT_DIR" -p 50
-PANE_LEFT_BOTTOM=$(tmux list-panes -t yadon -F '#{pane_id}' | sed -n '2p')
+tmux split-window -v -t "$PANE_LEFT" -c "$PROJECT_DIR" -p 50
+PANE_LEFT_BOTTOM=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | sed -n '2p')
 # 左下をさらに分割
-tmux split-window -v -t "$PANE_LEFT_BOTTOM" -c "$SCRIPT_DIR" -p 50
+tmux split-window -v -t "$PANE_LEFT_BOTTOM" -c "$PROJECT_DIR" -p 50
 
 # 右側: 下半分を分割
-tmux split-window -v -t "$PANE_RIGHT" -c "$SCRIPT_DIR" -p 50
-PANE_RIGHT_BOTTOM=$(tmux list-panes -t yadon -F '#{pane_id}' | tail -1)
+tmux split-window -v -t "$PANE_RIGHT" -c "$PROJECT_DIR" -p 50
+PANE_RIGHT_BOTTOM=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | tail -1)
 # 右下をさらに分割
-tmux split-window -v -t "$PANE_RIGHT_BOTTOM" -c "$SCRIPT_DIR" -p 50
+tmux split-window -v -t "$PANE_RIGHT_BOTTOM" -c "$PROJECT_DIR" -p 50
 
-# ペインIDを視覚的な位置順で取得
-# 左上→右上→左中→右中→左下→右下 の順で並び替え
-# pane_top,pane_left でソートして取得
-SORTED_PANES=($(tmux list-panes -t yadon -F '#{pane_top},#{pane_left},#{pane_id}' | sort -t',' -k1,1n -k2,2n | cut -d',' -f3))
+# ペインを作成順に記録
+# 最初のペインはヤドキング
+ALL_PANES=($(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}'))
+YADOKING_PANE="${ALL_PANES[0]}"
+
+# 右分割で作成したのがヤドラン
+YADORAN_PANE="$PANE_RIGHT"
+
+# 左側を縦分割したペインがヤドン1
+YADON1_PANE="$PANE_LEFT_BOTTOM"
+
+# 左下をさらに分割したのがヤドン2
+# （この時点で tail -1 で取得）
+YADON2_PANE=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | sed -n '4p')
+
+# 右側を縦分割したペインがヤドン3
+YADON3_PANE=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | sed -n '3p')
+
+# 右下をさらに分割したのがヤドン4
+YADON4_PANE=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | sed -n '6p')
 
 # 視覚的レイアウト:
 # ┌───────────┬───────────┐
@@ -120,16 +157,16 @@ SORTED_PANES=($(tmux list-panes -t yadon -F '#{pane_top},#{pane_left},#{pane_id}
 # │ [4]ヤドン2  │ [5]ヤドン4 │
 # └───────────┴───────────┘
 PANE_IDS=(
-    "${SORTED_PANES[0]}"  # 左上: ヤドキング
-    "${SORTED_PANES[1]}"  # 右上: ヤドラン
-    "${SORTED_PANES[2]}"  # 左中: ヤドン1
-    "${SORTED_PANES[3]}"  # 右中: ヤドン3
-    "${SORTED_PANES[4]}"  # 左下: ヤドン2
-    "${SORTED_PANES[5]}"  # 右下: ヤドン4
+    "$YADOKING_PANE"
+    "$YADORAN_PANE"
+    "$YADON1_PANE"
+    "$YADON2_PANE"
+    "$YADON3_PANE"
+    "$YADON4_PANE"
 )
 
 # ペインIDを設定ファイルに保存（エージェント間通信用）
-cat > "$SCRIPT_DIR/config/panes.yaml" << EOF
+cat > "$PANES_YAML" << EOF
 # 自動生成: エージェントのペインID
 # start.sh によって起動時に更新される
 yadoking: "${PANE_IDS[0]}"
@@ -139,7 +176,7 @@ yadon2: "${PANE_IDS[3]}"
 yadon3: "${PANE_IDS[4]}"
 yadon4: "${PANE_IDS[5]}"
 EOF
-echo "ペインID設定を保存: config/panes.yaml"
+echo "ペインID設定を保存: $PANES_YAML"
 
 # 各ペインにタイトルを設定（名前とモデル）
 TITLES=("ヤドキング(opus)" "ヤドラン(sonnet)" "ヤドン1(haiku)" "ヤドン2(haiku)" "ヤドン3(haiku)" "ヤドン4(haiku)")
@@ -148,8 +185,8 @@ for i in {0..5}; do
 done
 
 # ペインタイトルを表示する設定
-tmux set-option -t yadon pane-border-status top
-tmux set-option -t yadon pane-border-format " #{pane_index}: #{pane_title} "
+tmux set-option -t "$SESSION_NAME" pane-border-status top
+tmux set-option -t "$SESSION_NAME" pane-border-format " #{pane_index}: #{pane_title} "
 
 # 全ペインでClaudeを起動（並列、許可確認スキップ、モデル指定）
 echo "Claudeを起動中（並列）..."
@@ -203,7 +240,7 @@ read -r response
 if [[ "$response" =~ ^[Nn]$ ]]; then
     echo ""
     echo "   ...ヤド...じゃあ待ってる..."
-    echo "   tmux attach-session -t yadon で接続できます"
+    echo "   tmux attach-session -t $SESSION_NAME で接続できます"
 else
-    tmux attach-session -t yadon
+    tmux attach-session -t "$SESSION_NAME"
 fi
