@@ -119,45 +119,25 @@ echo "ペインを作成中..."
 # └───────────┴───────────┘
 
 # まず左右に分割（50:50）
-tmux split-window -h -t yadon -c "$PROJECT_DIR" -p 50
+tmux split-window -h -t "$SESSION_NAME" -c "$PROJECT_DIR" -p 50
 
-# 左側（ペイン0）を縦に3分割
-# ヤドキング(50%) | ヤドン1(25%) | ヤドン2(25%)
+# 分割直後にペインIDを確実に取得
 PANE_LEFT=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | head -1)
 PANE_RIGHT=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | tail -1)
 
-# 左側: 下半分を分割
-tmux split-window -v -t "$PANE_LEFT" -c "$PROJECT_DIR" -p 50
-PANE_LEFT_BOTTOM=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | sed -n '2p')
+# 左側: 下半分を分割 → 新しいペインIDを直接取得
+YADON1_PANE=$(tmux split-window -v -t "$PANE_LEFT" -c "$PROJECT_DIR" -p 50 -P -F '#{pane_id}')
 # 左下をさらに分割
-tmux split-window -v -t "$PANE_LEFT_BOTTOM" -c "$PROJECT_DIR" -p 50
+YADON2_PANE=$(tmux split-window -v -t "$YADON1_PANE" -c "$PROJECT_DIR" -p 50 -P -F '#{pane_id}')
 
 # 右側: 下半分を分割
-tmux split-window -v -t "$PANE_RIGHT" -c "$PROJECT_DIR" -p 50
-PANE_RIGHT_BOTTOM=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | tail -1)
+YADON3_PANE=$(tmux split-window -v -t "$PANE_RIGHT" -c "$PROJECT_DIR" -p 50 -P -F '#{pane_id}')
 # 右下をさらに分割
-tmux split-window -v -t "$PANE_RIGHT_BOTTOM" -c "$PROJECT_DIR" -p 50
+YADON4_PANE=$(tmux split-window -v -t "$YADON3_PANE" -c "$PROJECT_DIR" -p 50 -P -F '#{pane_id}')
 
-# ペインを作成順に記録
-# 最初のペインはヤドキング
-ALL_PANES=($(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}'))
-YADOKING_PANE="${ALL_PANES[0]}"
-
-# 右分割で作成したのがヤドラン
+# ペインID割り当て
+YADOKING_PANE="$PANE_LEFT"
 YADORAN_PANE="$PANE_RIGHT"
-
-# 左側を縦分割したペインがヤドン1
-YADON1_PANE="$PANE_LEFT_BOTTOM"
-
-# 左下をさらに分割したのがヤドン2
-# （この時点で tail -1 で取得）
-YADON2_PANE=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | sed -n '4p')
-
-# 右側を縦分割したペインがヤドン3
-YADON3_PANE=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | sed -n '3p')
-
-# 右下をさらに分割したのがヤドン4
-YADON4_PANE=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | sed -n '6p')
 
 # 視覚的レイアウト:
 # ┌───────────┬───────────┐
@@ -175,6 +155,28 @@ PANE_IDS=(
     "$YADON3_PANE"
     "$YADON4_PANE"
 )
+PANE_NAMES=("ヤドキング" "ヤドラン" "ヤドン1" "ヤドン2" "ヤドン3" "ヤドン4")
+
+# ペインID検証: 全6ペインが割り当てられているか確認
+PANE_COUNT=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | wc -l | tr -d ' ')
+if [ "$PANE_COUNT" -ne 6 ]; then
+    echo -e "${RED}エラー${NC} ペインが6つ必要ですが ${PANE_COUNT} 個しかありません"
+    tmux kill-session -t "$SESSION_NAME"
+    exit 1
+fi
+
+for i in {0..5}; do
+    if [ -z "${PANE_IDS[$i]}" ]; then
+        echo -e "${RED}エラー${NC} ${PANE_NAMES[$i]} のペインIDが空です"
+        tmux kill-session -t "$SESSION_NAME"
+        exit 1
+    fi
+done
+
+echo "ペイン割り当て:"
+for i in {0..5}; do
+    echo "  ${PANE_NAMES[$i]}: ${PANE_IDS[$i]}"
+done
 
 # ペインIDを設定ファイルに保存（エージェント間通信用）
 cat > "$PANES_YAML" << EOF
@@ -188,6 +190,12 @@ yadon3: "${PANE_IDS[4]}"
 yadon4: "${PANE_IDS[5]}"
 EOF
 echo "ペインID設定を保存: $PANES_YAML"
+
+# 後方互換: config/panes.yaml にもコピー（他スクリプトが参照する場合）
+PANES_COMPAT="$SCRIPT_DIR/config/panes.yaml"
+if [ "$PANES_YAML" != "$PANES_COMPAT" ]; then
+    cp "$PANES_YAML" "$PANES_COMPAT"
+fi
 
 # 各ペインにタイトルを設定（名前とモデル）
 TITLES=("ヤドキング(opus)" "ヤドラン(sonnet)" "ヤドン1(haiku)" "ヤドン2(haiku)" "ヤドン3(haiku)" "ヤドン4(haiku)")
