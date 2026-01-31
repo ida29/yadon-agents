@@ -1,12 +1,13 @@
 #!/bin/bash
 # Token使用量を監視するスクリプト
 
-TOKEN_LOG="/Users/yuto.ida/work/yadon-agent/logs/token_usage.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+TOKEN_LOG="$WORK_DIR/logs/token_usage.log"
 mkdir -p "$(dirname "$TOKEN_LOG")"
 
 # 現在のタイムスタンプとtoken使用量を記録
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-USAGE=$(echo "トークン監視開始" 2>&1)
 
 # ログに記録
 echo "[$TIMESTAMP] Session started" >> "$TOKEN_LOG"

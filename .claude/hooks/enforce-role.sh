@@ -5,6 +5,12 @@
 # exit 0 = 許可
 # exit 2 = ブロック（stderrにメッセージ）
 
+# jq が利用可能か確認（なければ許可してフェイルオープン）
+if ! command -v jq &>/dev/null; then
+    echo "警告: jq が見つかりません。役割制御をスキップします。" >&2
+    exit 0
+fi
+
 # stdin から JSON を読み取る
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')

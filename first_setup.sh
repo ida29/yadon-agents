@@ -32,6 +32,24 @@ check_command() {
 echo "📦 必要なツールを確認中..."
 echo ""
 
+if ! check_command jq; then
+    echo "  jq をインストールします..."
+    if [ "$OS" = "Darwin" ]; then
+        if check_command brew; then
+            brew install jq
+        else
+            echo -e "${RED}✗${NC} Homebrew がインストールされていません"
+            exit 1
+        fi
+    elif [ "$OS" = "Linux" ]; then
+        if check_command apt-get; then
+            sudo apt-get update && sudo apt-get install -y jq
+        elif check_command yum; then
+            sudo yum install -y jq
+        fi
+    fi
+fi
+
 if ! check_command tmux; then
     echo "  tmux をインストールします..."
     if [ "$OS" = "Darwin" ]; then
