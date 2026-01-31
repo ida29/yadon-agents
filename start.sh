@@ -77,6 +77,17 @@ wait_for_claude() {
 # ヤドキング: opus（戦略立案）
 # ヤドラン: sonnet（タスク分解・管理）
 # ヤドン: haiku（実作業）
+# エージェント名からロールを取得
+get_agent_role() {
+    local name="$1"
+    case "$name" in
+        ヤドキング) echo "yadoking" ;;
+        ヤドラン)   echo "yadoran" ;;
+        ヤドン*)    echo "yadon" ;;
+        *)          echo "yadon" ;;
+    esac
+}
+
 declare -a AGENTS=(
     "ヤドキング:opus:instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください"
     "ヤドラン:sonnet:instructions/yadoran.md を読んで、ヤドランとして振る舞ってください"
@@ -192,7 +203,8 @@ tmux set-option -t "$SESSION_NAME" pane-border-format " #{pane_index}: #{pane_ti
 echo "Claudeを起動中（並列）..."
 for i in {0..5}; do
     IFS=':' read -r name model instruction <<< "${AGENTS[$i]}"
-    tmux send-keys -t "${PANE_IDS[$i]}" "claude --dangerously-skip-permissions --model $model" Enter
+    ROLE=$(get_agent_role "$name")
+    tmux send-keys -t "${PANE_IDS[$i]}" "export AGENT_ROLE=$ROLE && claude --dangerously-skip-permissions --model $model" Enter
 done
 
 # 全Claudeの起動を並列で待機
