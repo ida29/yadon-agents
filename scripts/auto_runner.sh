@@ -2,7 +2,7 @@
 # auto_runner.sh - 自動タスク処理スクリプト
 # 10秒ごとにdashboard.mdをチェックして新しいタスクがあれば通知
 
-WORK_DIR="/Users/yuto.ida/work/yadon-agent"
+WORK_DIR="/Users/yida/work/yadon-agents"
 DASHBOARD_FILE="$WORK_DIR/docs/dashboard.md"
 CONFIG_FILE="$WORK_DIR/config/panes.yaml"
 LAST_TASK_COUNT=0
