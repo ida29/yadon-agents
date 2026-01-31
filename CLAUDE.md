@@ -53,6 +53,7 @@ yadon-agents/
 ├── CLAUDE.md                 # このファイル
 ├── first_setup.sh            # 初回セットアップ
 ├── start.sh                  # 毎日の起動スクリプト
+├── stop.sh                   # 停止スクリプト
 ├── config/
 │   ├── settings.yaml         # 設定
 │   └── panes.yaml            # tmuxペインID（自動生成）
@@ -69,6 +70,8 @@ yadon-agents/
 │   └── master_status.yaml
 ├── logs/                     # ログファイル格納
 ├── scripts/
+│   ├── notify.sh             # エージェント間通知
+│   └── auto_runner.sh        # 自動タスク検出
 ├── templates/
 │   └── context_template.md
 └── docs/
@@ -99,6 +102,14 @@ tmux send-keysでヤドランに直接報告を送る
 2. `docs/dashboard.md` で現在の状況を確認
 3. 作業を再開
 
+## scripts/
+
+### notify.sh
+エージェント間通知スクリプト。tmux send-keysでメッセージを送信し、入力欄確認・再送信処理を行う。
+
+### auto_runner.sh
+自動タスク検出スクリプト。10秒ごとにdashboard.mdをチェックして新規タスクがあれば通知。
+
 ## 起動方法
 
 ```bash
@@ -107,6 +118,9 @@ tmux send-keysでヤドランに直接報告を送る
 
 # 毎回
 ./start.sh
+
+# 停止
+./stop.sh
 ```
 
 # テスト完了 v2
