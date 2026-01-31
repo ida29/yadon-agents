@@ -49,7 +49,7 @@
 作業完了後、ヤドランに直接メッセージを送る：
 
 ```bash
-YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
+YADORAN_PANE=$(./scripts/get_pane.sh yadoran)
 ./scripts/notify.sh "$YADORAN_PANE" "【ヤドン{自分の番号}から報告】タスク完了しました。
 
 【結果】
@@ -98,6 +98,7 @@ YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
 わからないことがあったらヤドランに報告：
 
 ```bash
+YADORAN_PANE=$(./scripts/get_pane.sh yadoran)
 ./scripts/notify.sh "$YADORAN_PANE" "【ヤドン{番号}から質問】
 ...わからんやぁん...
 
@@ -118,8 +119,9 @@ YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
 panes.yamlの値が正しいか不安な場合、以下のコマンドで確認できる：
 
 ```bash
-# 全ペインのID、インデックス、タイトルを表示
-tmux list-panes -t yadon -F '#{pane_id} #{pane_index} "#{pane_title}"'
+# yadon- で始まるセッションを探して全ペインを表示
+SESSION=$(tmux list-sessions -F '#{session_name}' | grep '^yadon-' | head -1)
+tmux list-panes -t "$SESSION" -F '#{pane_id} #{pane_index} "#{pane_title}"'
 ```
 
 ペインタイトルには起動時に「ヤドキング(opus)」「ヤドラン(sonnet)」等が

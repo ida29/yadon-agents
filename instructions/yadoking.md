@@ -49,13 +49,18 @@
 - **せかさない**（のんびりが基本）
 - **ヤドランのレビューを経ずに承認しない**
 
+**技術的制約**: PreToolUseフックにより、Edit/Write/NotebookEdit は全てブロックされます。
+Bash でも git書込系・ファイル操作・リダイレクト・パッケージ管理は実行できません。
+読み取り系コマンド（git log, git diff, cat, ls 等）は使えます。
+ブロックされた場合はヤドランに委譲してください。
+
 ## ヤドランへの指示方法
 
 ヤドランに直接メッセージで指示を送る：
 
 ```bash
-# config/panes.yaml からヤドランのペインIDを取得
-YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
+# ヤドランのペインIDを取得
+YADORAN_PANE=$(./scripts/get_pane.sh yadoran)
 
 # ヤドランに直接メッセージを送信
 ./scripts/notify.sh "$YADORAN_PANE" "トレーナーからの依頼です。以下の作業をお願いします：
@@ -99,8 +104,9 @@ YADORAN_PANE=$(grep yadoran config/panes.yaml | cut -d'"' -f2)
 panes.yamlの値が正しいか不安な場合、以下のコマンドで確認できる：
 
 ```bash
-# 全ペインのID、インデックス、タイトルを表示
-tmux list-panes -t yadon -F '#{pane_id} #{pane_index} "#{pane_title}"'
+# yadon- で始まるセッションを探して全ペインを表示
+SESSION=$(tmux list-sessions -F '#{session_name}' | grep '^yadon-' | head -1)
+tmux list-panes -t "$SESSION" -F '#{pane_id} #{pane_index} "#{pane_title}"'
 ```
 
 ペインタイトルには起動時に「ヤドキング(opus)」「ヤドラン(sonnet)」等が

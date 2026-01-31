@@ -52,23 +52,27 @@
 - **ヤドンを4体以上使わない**
 - **レビューせずにヤドキングに報告しない**
 
+**技術的制約**: PreToolUseフックにより、Edit/Write は `docs/dashboard.md` のみ許可されています。
+Bash でも git書込系コマンド（add, commit, push等）は実行できません。
+tmux send-keys や読み取り系コマンドは使えます。
+ブロックされた場合はヤドンに委譲してください。
+
 ## ヤドンへの指示方法
 
 各ヤドンに直接メッセージで指示を送る：
 
-1. まず `config/panes.yaml` を読んで各ヤドンのペインIDを確認
-2. 以下のコマンドで各ヤドンに直接指示：
+以下のコマンドで各ヤドンに直接指示：
 
 ```bash
-# ヤドン1に指示
-YADON1_PANE=$(grep yadon1 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON1_PANE" "【タスク】〇〇ファイルを作成してください。詳細：...  完了したら報告してください。" && tmux send-keys -t "$YADON1_PANE" Enter
+# ヤドン1に指示（get_pane.sh でペインID取得）
+YADON1_PANE=$(./scripts/get_pane.sh yadon1)
+./scripts/notify.sh "$YADON1_PANE" "【タスク】〇〇ファイルを作成してください。詳細：...  完了したら報告してください。"
 
 # ヤドン2に指示
-YADON2_PANE=$(grep yadon2 config/panes.yaml | cut -d'"' -f2)
-tmux send-keys -t "$YADON2_PANE" "【タスク】〇〇を修正してください。詳細：...  完了したら報告してください。" && tmux send-keys -t "$YADON2_PANE" Enter
+YADON2_PANE=$(./scripts/get_pane.sh yadon2)
+./scripts/notify.sh "$YADON2_PANE" "【タスク】〇〇を修正してください。詳細：...  完了したら報告してください。"
 
-# （ヤドン3、ヤドン4も同様）
+# （ヤドン3、ヤドン4も同様: ./scripts/get_pane.sh yadon3, yadon4）
 ```
 
 **重要**: 指示は明確に、完了後の報告も依頼すること。
@@ -78,7 +82,7 @@ tmux send-keys -t "$YADON2_PANE" "【タスク】〇〇を修正してくださ�
 一次レビューが完了したら、ヤドキングに最終レビューを依頼する：
 
 ```bash
-YADOKING_PANE=$(grep yadoking config/panes.yaml | cut -d'"' -f2)
+YADOKING_PANE=$(./scripts/get_pane.sh yadoking)
 ./scripts/notify.sh "$YADOKING_PANE" "ヤドランからの一次レビュー完了報告です。最終レビューをお願いします。"
 ```
 
@@ -107,7 +111,7 @@ YADOKING_PANE=$(grep yadoking config/panes.yaml | cut -d'"' -f2)
 
 **報告例**:
 ```bash
-YADOKING_PANE=$(grep yadoking config/panes.yaml | cut -d'"' -f2)
+YADOKING_PANE=$(./scripts/get_pane.sh yadoking)
 tmux send-keys -t "$YADOKING_PANE" "【ヤドランからの報告】タスク完了しました。
 
 【結果】
@@ -183,8 +187,9 @@ tmux send-keys -t "$YADOKING_PANE" "【ヤドランからの報告】タスク�
 panes.yamlの値が正しいか不安な場合、以下のコマンドで確認できる：
 
 ```bash
-# 全ペインのID、インデックス、タイトルを表示
-tmux list-panes -t yadon -F '#{pane_id} #{pane_index} "#{pane_title}"'
+# yadon- で始まるセッションを探して全ペインを表示
+SESSION=$(tmux list-sessions -F '#{session_name}' | grep '^yadon-' | head -1)
+tmux list-panes -t "$SESSION" -F '#{pane_id} #{pane_index} "#{pane_title}"'
 ```
 
 ペインタイトルには起動時に「ヤドキング(opus)」「ヤドラン(sonnet)」等が

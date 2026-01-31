@@ -7,11 +7,13 @@ screenshot:
   path: ""
 
 # エージェント設定
+# セッション名は start.sh により "yadon-$PROJECT_NAME" で動的生成される
+# ペインIDは config/panes-$PROJECT_NAME.yaml (+ config/panes.yaml 後方互換コピー) に保存
 agents:
   yadoking:
-    session: yadoking
-    pane: 0
+    role: yadoking
+    model: opus
   yadoran:
-    session: multiagent
-    pane: 0
+    role: yadoran
+    model: sonnet
   yadon_count: 4

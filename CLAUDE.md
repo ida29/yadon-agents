@@ -69,9 +69,17 @@ yadon-agents/
 ├── status/
 │   └── master_status.yaml
 ├── logs/                     # ログファイル格納
+├── .claude/
+│   ├── settings.json         # PreToolUseフック設定
+│   └── hooks/
+│       └── enforce-role.sh   # 役割別ツール制御スクリプト
 ├── scripts/
 │   ├── notify.sh             # エージェント間通知
-│   └── auto_runner.sh        # 自動タスク検出
+│   ├── get_pane.sh           # ペインID取得ヘルパー
+│   ├── auto_runner.sh        # 自動タスク検出
+│   ├── start_verification.sh # 継続検証スクリプト
+│   ├── monitor_tokens.sh     # トークン監視（単発）
+│   └── token_monitor.sh      # トークン監視（常駐）
 ├── templates/
 │   └── context_template.md
 └── docs/
@@ -102,10 +110,25 @@ tmux send-keysでヤドランに直接報告を送る
 2. `docs/dashboard.md` で現在の状況を確認
 3. 作業を再開
 
+## 役割制御（PreToolUseフック）
+
+`AGENT_ROLE` 環境変数と `.claude/hooks/enforce-role.sh` により、役割に応じたツール実行制限を技術的に強制する。
+
+| エージェント | AGENT_ROLE | Edit/Write | Bash (git書込) | Bash (読取) |
+|---|---|---|---|---|
+| ヤドキング | `yadoking` | 全禁止 | 禁止 | 許可 |
+| ヤドラン | `yadoran` | dashboard.mdのみ | 禁止 | 許可 |
+| ヤドン1-4 | `yadon` | 全許可 | 全許可 | 全許可 |
+
+`start.sh` がClaude起動時に `export AGENT_ROLE=...` を設定する。
+
 ## scripts/
 
+### get_pane.sh
+ペインID取得ヘルパー。`./scripts/get_pane.sh yadoran` のように使用。panes設定ファイルを自動探索し、堅牢なYAML解析でペインIDを返す。
+
 ### notify.sh
-エージェント間通知スクリプト。tmux send-keysでメッセージを送信し、入力欄確認・再送信処理を行う。
+エージェント間通知スクリプト。tmux send-keysでメッセージを送信し、入力欄確認・再送信処理を行う。引数・ペイン存在チェック付き。
 
 ### auto_runner.sh
 自動タスク検出スクリプト。10秒ごとにdashboard.mdをチェックして新規タスクがあれば通知。
