@@ -66,8 +66,6 @@ yadon-agents/
 │   ├── yadoking_pending.md
 │   ├── exchange_counter.md
 │   └── global_context.md
-├── status/
-│   └── master_status.yaml
 ├── logs/                     # ログファイル格納
 ├── .claude/
 │   ├── settings.json         # PreToolUseフック設定
