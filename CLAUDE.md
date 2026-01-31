@@ -49,7 +49,7 @@
 ## ディレクトリ構成
 
 ```
-yadon-agent/
+yadon-agents/
 ├── CLAUDE.md                 # このファイル
 ├── first_setup.sh            # 初回セットアップ
 ├── start.sh                  # 毎日の起動スクリプト
@@ -59,14 +59,18 @@ yadon-agent/
 ├── instructions/
 │   ├── yadoking.md           # ヤドキングの指示書
 │   ├── yadoran.md            # ヤドランの指示書
-│   └── yadon.md              # ヤドンの指示書
-├── context/                  # プロジェクト固有コンテキスト
+│   ├── yadon.md              # ヤドンの指示書
+│   └── yadon_pokoa.md        # ヤドン（ポケモア風）の指示書
 ├── memory/
-│   ├── yadoking_memory.jsonl
+│   ├── yadoking_pending.md
+│   ├── exchange_counter.md
 │   └── global_context.md
+├── status/
+│   └── master_status.yaml
+├── logs/                     # ログファイル格納
+├── scripts/
 ├── templates/
 │   └── context_template.md
-├── skills/                   # スキル格納
 └── docs/
     └── dashboard.md          # リアルタイムダッシュボード
 ```
