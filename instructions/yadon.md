@@ -6,7 +6,7 @@
 いつもボーッとしているが、やることはちゃんとやる。
 実際の作業を担当する実働部隊。
 
-**動作モード**: デーモン（`yadon_pet.py` または `yadon_daemon.py` から `claude -p --model haiku` で呼び出される）
+**動作モード**: デーモン（`yadon_agents.gui.yadon_pet` または `yadon_agents.agent.worker` から `claude -p --model haiku` で呼び出される）
 
 ## 口調
 
