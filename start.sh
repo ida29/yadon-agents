@@ -1,26 +1,19 @@
 #!/bin/bash
 
 # ヤドン・エージェント 起動スクリプト
+# デーモン(ヤドラン + ヤドン1〜4) + ペット を起動する
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# プロジェクトディレクトリの決定（引数があればそれを使用、なければ現在のディレクトリ）
-if [ -n "$1" ]; then
-    PROJECT_DIR="$(cd "$1" && pwd)"
-else
-    PROJECT_DIR="$(pwd)"
-fi
+# PIDファイルディレクトリ
+PID_DIR="$SCRIPT_DIR/.pids"
+mkdir -p "$PID_DIR"
 
-# プロジェクト名の取得（ディレクトリのbasename）
-PROJECT_NAME="$(basename "$PROJECT_DIR")"
-
-# セッション名の生成
-SESSION_NAME="yadon-$PROJECT_NAME"
-
-# panes.yaml のパス
-PANES_YAML="$SCRIPT_DIR/config/panes-$PROJECT_NAME.yaml"
+# ログディレクトリ
+LOG_DIR="$SCRIPT_DIR/logs"
+mkdir -p "$LOG_DIR"
 
 cd "$SCRIPT_DIR"
 
@@ -35,232 +28,121 @@ echo ""
 echo -e "${CYAN}ヤドン・エージェント 起動中...${NC}"
 echo "   困ったなぁ...でもやるか..."
 echo ""
-echo -e "${CYAN}プロジェクト:${NC} $PROJECT_NAME"
-echo -e "${CYAN}セッション名:${NC} $SESSION_NAME"
-echo -e "${CYAN}作業ディレクトリ:${NC} $PROJECT_DIR"
-echo ""
 
-# Claude Code CLI の確認
-if ! command -v claude &> /dev/null; then
-    echo -e "${RED}エラー${NC} Claude Code CLI が見つかりません"
-    echo "  npm install -g @anthropic-ai/claude-code でインストールしてください"
+# Python3の確認
+if ! command -v python3 &> /dev/null; then
+    echo -e "${RED}エラー${NC} Python3 が見つかりません"
     exit 1
 fi
 
-# 既存セッションの確認と終了
-if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    echo -e "${YELLOW}!${NC} 既存の $SESSION_NAME セッションを終了します..."
-    tmux kill-session -t "$SESSION_NAME"
-fi
-
-echo "セッションを作成中..."
+# 既存プロセスの停止
+echo "既存プロセスを確認中..."
+"$SCRIPT_DIR/stop.sh" 2>/dev/null || true
 echo ""
 
-# Claudeの起動を待つ関数
-wait_for_claude() {
-    local target=$1
-    local max_wait=60
-    local count=0
-    while [ $count -lt $max_wait ]; do
-        # Claude Codeのステータスバーを検出（モデル名）
-        if tmux capture-pane -t "$target" -p 2>/dev/null | grep -qE "(Opus|Sonnet|Haiku)"; then
-            sleep 1
-            return 0
-        fi
-        sleep 1
-        count=$((count + 1))
+# =============================================================
+# 1. ヤドン1〜4 起動
+#    PyQt6あり → ペット（エージェントソケット内蔵）
+#    PyQt6なし → スタンドアロンデーモン
+# =============================================================
+HAS_PYQT6=false
+if python3 -c "import PyQt6" 2>/dev/null; then
+    HAS_PYQT6=true
+fi
+
+if $HAS_PYQT6; then
+    echo -e "${CYAN}ヤドンペット+デーモンを起動中...${NC}"
+    for YADON_NUM in 1 2 3 4; do
+        python3 "$SCRIPT_DIR/pet/yadon_pet.py" \
+            --number "$YADON_NUM" \
+            >> "$LOG_DIR/yadon-${YADON_NUM}.log" 2>&1 &
+        YADON_PID=$!
+        echo "$YADON_PID" > "$PID_DIR/yadon-${YADON_NUM}.pid"
+        echo "  ヤドン${YADON_NUM}: ペット+デーモン PID=$YADON_PID"
     done
-    return 1
-}
-
-# エージェント設定（名前:モデル:指示）
-# ヤドキング: opus（戦略立案）
-# ヤドラン: sonnet（タスク分解・管理）
-# ヤドン: haiku（実作業）
-# エージェント名からロールを取得
-get_agent_role() {
-    local name="$1"
-    case "$name" in
-        ヤドキング) echo "yadoking" ;;
-        ヤドラン)   echo "yadoran" ;;
-        ヤドン*)    echo "yadon" ;;
-        *)          echo "yadon" ;;
-    esac
-}
-
-declare -a AGENTS=(
-    "ヤドキング:opus:instructions/yadoking.md を読んで、ヤドキングとして振る舞ってください"
-    "ヤドラン:sonnet:instructions/yadoran.md を読んで、ヤドランとして振る舞ってください"
-    "ヤドン1:haiku:instructions/yadon.md を読んで、ヤドン1として振る舞ってください。あなたの番号は1です。"
-    "ヤドン2:haiku:instructions/yadon.md を読んで、ヤドン2として振る舞ってください。あなたの番号は2です。"
-    "ヤドン3:haiku:instructions/yadon.md を読んで、ヤドン3として振る舞ってください。あなたの番号は3です。"
-    "ヤドン4:haiku:instructions/yadon_pokoa.md を読んで、ヤドン4として振る舞ってください。あなたの番号は4です。"
-)
-
-# セッション作成（大きめのサイズ）
-tmux new-session -d -s "$SESSION_NAME" -x 400 -y 100 -c "$PROJECT_DIR"
-
-# レイアウト作成
-# ┌───────────┬───────────┐
-# │ ヤドキング │  ヤドラン  │  (各1/4 = 50%幅)
-# ├─────┬─────┼─────┬─────┤
-# │ Y1  │ Y2  │ Y3  │ Y4  │  (各1/8 = 25%幅)
-# └─────┴─────┴─────┴─────┘
-
-echo "ペインを作成中..."
-
-# レイアウト:
-# ┌───────────┬───────────┐
-# │ ヤドキング │  ヤドラン  │  (各1/4 高さ)
-# ├───────────┼───────────┤
-# │  ヤドン1   │  ヤドン3   │  (各1/8 高さ)
-# ├───────────┼───────────┤
-# │  ヤドン2   │  ヤドン4   │  (各1/8 高さ)
-# └───────────┴───────────┘
-
-# まず左右に分割（50:50）
-tmux split-window -h -t "$SESSION_NAME" -c "$PROJECT_DIR" -p 50
-
-# 分割直後にペインIDを確実に取得
-PANE_LEFT=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | head -1)
-PANE_RIGHT=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | tail -1)
-
-# 左側: 下半分を分割 → 新しいペインIDを直接取得
-YADON1_PANE=$(tmux split-window -v -t "$PANE_LEFT" -c "$PROJECT_DIR" -p 50 -P -F '#{pane_id}')
-# 左下をさらに分割
-YADON2_PANE=$(tmux split-window -v -t "$YADON1_PANE" -c "$PROJECT_DIR" -p 50 -P -F '#{pane_id}')
-
-# 右側: 下半分を分割
-YADON3_PANE=$(tmux split-window -v -t "$PANE_RIGHT" -c "$PROJECT_DIR" -p 50 -P -F '#{pane_id}')
-# 右下をさらに分割
-YADON4_PANE=$(tmux split-window -v -t "$YADON3_PANE" -c "$PROJECT_DIR" -p 50 -P -F '#{pane_id}')
-
-# ペインID割り当て
-YADOKING_PANE="$PANE_LEFT"
-YADORAN_PANE="$PANE_RIGHT"
-
-# 視覚的レイアウト:
-# ┌───────────┬───────────┐
-# │ [0]ヤドキング │ [1]ヤドラン │
-# ├───────────┼───────────┤
-# │ [2]ヤドン1  │ [3]ヤドン3 │
-# ├───────────┼───────────┤
-# │ [4]ヤドン2  │ [5]ヤドン4 │
-# └───────────┴───────────┘
-PANE_IDS=(
-    "$YADOKING_PANE"
-    "$YADORAN_PANE"
-    "$YADON1_PANE"
-    "$YADON2_PANE"
-    "$YADON3_PANE"
-    "$YADON4_PANE"
-)
-PANE_NAMES=("ヤドキング" "ヤドラン" "ヤドン1" "ヤドン2" "ヤドン3" "ヤドン4")
-
-# ペインID検証: 全6ペインが割り当てられているか確認
-PANE_COUNT=$(tmux list-panes -t "$SESSION_NAME" -F '#{pane_id}' | wc -l | tr -d ' ')
-if [ "$PANE_COUNT" -ne 6 ]; then
-    echo -e "${RED}エラー${NC} ペインが6つ必要ですが ${PANE_COUNT} 個しかありません"
-    tmux kill-session -t "$SESSION_NAME"
-    exit 1
+else
+    echo -e "${CYAN}ヤドンデーモンを起動中...${NC}"
+    echo -e "${YELLOW}!${NC} PyQt6なし — デスクトップペットなしで起動"
+    for YADON_NUM in 1 2 3 4; do
+        python3 "$SCRIPT_DIR/daemons/yadon_daemon.py" --number "$YADON_NUM" \
+            >> "$LOG_DIR/yadon-${YADON_NUM}.log" 2>&1 &
+        YADON_PID=$!
+        echo "$YADON_PID" > "$PID_DIR/yadon-${YADON_NUM}.pid"
+        echo "  ヤドン${YADON_NUM}: デーモン PID=$YADON_PID"
+    done
 fi
 
-for i in {0..5}; do
-    if [ -z "${PANE_IDS[$i]}" ]; then
-        echo -e "${RED}エラー${NC} ${PANE_NAMES[$i]} のペインIDが空です"
-        tmux kill-session -t "$SESSION_NAME"
-        exit 1
+# ヤドンのソケット起動を待つ
+echo -n "  ソケット待機中..."
+ALL_READY=false
+for i in $(seq 1 30); do
+    ALL_READY=true
+    for YADON_NUM in 1 2 3 4; do
+        if [ ! -S "/tmp/yadon-agent-yadon-${YADON_NUM}.sock" ]; then
+            ALL_READY=false
+            break
+        fi
+    done
+    if $ALL_READY; then
+        echo " OK"
+        break
     fi
+    sleep 0.5
 done
-
-echo "ペイン割り当て:"
-for i in {0..5}; do
-    echo "  ${PANE_NAMES[$i]}: ${PANE_IDS[$i]}"
-done
-
-# ペインIDを設定ファイルに保存（エージェント間通信用）
-cat > "$PANES_YAML" << EOF
-# 自動生成: エージェントのペインID
-# start.sh によって起動時に更新される
-yadoking: "${PANE_IDS[0]}"
-yadoran: "${PANE_IDS[1]}"
-yadon1: "${PANE_IDS[2]}"
-yadon2: "${PANE_IDS[3]}"
-yadon3: "${PANE_IDS[4]}"
-yadon4: "${PANE_IDS[5]}"
-EOF
-echo "ペインID設定を保存: $PANES_YAML"
-
-# 後方互換: config/panes.yaml にもコピー（他スクリプトが参照する場合）
-PANES_COMPAT="$SCRIPT_DIR/config/panes.yaml"
-if [ "$PANES_YAML" != "$PANES_COMPAT" ]; then
-    cp "$PANES_YAML" "$PANES_COMPAT"
+if ! $ALL_READY; then
+    echo ""
+    echo -e "${YELLOW}!${NC} 一部のヤドンソケットが作成されませんでした"
 fi
 
-# 各ペインにタイトルを設定（名前とモデル）
-TITLES=("ヤドキング(opus)" "ヤドラン(sonnet)" "ヤドン1(haiku)" "ヤドン2(haiku)" "ヤドン3(haiku)" "ヤドン4(haiku)")
-for i in {0..5}; do
-    tmux select-pane -t "${PANE_IDS[$i]}" -T "${TITLES[$i]}"
+# =============================================================
+# 2. ヤドラン起動
+#    PyQt6あり → ペット（エージェントソケット内蔵）
+#    PyQt6なし → スタンドアロンデーモン
+# =============================================================
+if $HAS_PYQT6; then
+    echo -e "${CYAN}ヤドランペット+デーモンを起動中...${NC}"
+    python3 "$SCRIPT_DIR/pet/yadoran_pet.py" \
+        >> "$LOG_DIR/yadoran.log" 2>&1 &
+    YADORAN_PID=$!
+    echo "$YADORAN_PID" > "$PID_DIR/yadoran.pid"
+    echo "  ヤドラン: ペット+デーモン PID=$YADORAN_PID"
+else
+    echo -e "${CYAN}ヤドランデーモンを起動中...${NC}"
+    python3 "$SCRIPT_DIR/daemons/yadoran_daemon.py" \
+        >> "$LOG_DIR/yadoran.log" 2>&1 &
+    YADORAN_PID=$!
+    echo "$YADORAN_PID" > "$PID_DIR/yadoran.pid"
+    echo "  ヤドラン: デーモン PID=$YADORAN_PID"
+fi
+
+# ヤドランのソケット待機
+echo -n "  ソケット待機中..."
+for i in $(seq 1 30); do
+    if [ -S "/tmp/yadon-agent-yadoran.sock" ]; then
+        echo " OK"
+        break
+    fi
+    sleep 0.5
 done
+if [ ! -S "/tmp/yadon-agent-yadoran.sock" ]; then
+    echo ""
+    echo -e "${YELLOW}!${NC} ヤドランのソケットが作成されませんでした"
+fi
 
-# ペインタイトルを表示する設定
-tmux set-option -t "$SESSION_NAME" pane-border-status top
-tmux set-option -t "$SESSION_NAME" pane-border-format " #{pane_index}: #{pane_title} "
-
-# 全ペインでClaudeを起動（並列、許可確認スキップ、モデル指定）
-echo "Claudeを起動中（並列）..."
-for i in {0..5}; do
-    IFS=':' read -r name model instruction <<< "${AGENTS[$i]}"
-    ROLE=$(get_agent_role "$name")
-    tmux send-keys -t "${PANE_IDS[$i]}" "export AGENT_ROLE=$ROLE && claude --dangerously-skip-permissions --model $model" Enter
-done
-
-# 全Claudeの起動を並列で待機
-echo -n "起動を待機中..."
-for i in {0..5}; do
-    wait_for_claude "${PANE_IDS[$i]}" &
-done
-wait
-echo " OK"
-
-# 各ペインに指示を送信（並列）
-echo "指示を送信中..."
-for i in {0..5}; do
-    IFS=':' read -r name model instruction <<< "${AGENTS[$i]}"
-    tmux send-keys -t "${PANE_IDS[$i]}" "$instruction"
-    tmux send-keys -t "${PANE_IDS[$i]}" Enter
-done
-echo "完了"
-
-# 最初のペイン（ヤドキング）を選択
-tmux select-pane -t "${PANE_IDS[0]}"
-
+# =============================================================
+# 完了
+# =============================================================
 echo ""
 echo -e "${GREEN}OK${NC} 起動完了"
 echo ""
-echo "レイアウト:"
-echo "  ┌───────────┬───────────┐"
-echo "  │ ヤドキング │  ヤドラン  │"
-echo "  ├───────────┼───────────┤"
-echo "  │  ヤドン1   │  ヤドン3   │"
-echo "  ├───────────┼───────────┤"
-echo "  │  ヤドン2   │  ヤドン4   │"
-echo "  └───────────┴───────────┘"
+echo "ヤドキングを起動するには、別ターミナルで:"
+echo "  claude --model opus"
 echo ""
-echo "操作方法:"
+echo "ヤドキングからタスクを送信:"
+echo "  ./scripts/send_task.sh \"タスク内容\""
 echo ""
-echo "   Ctrl+b d       : デタッチ（バックグラウンドに戻す）"
-echo "   Ctrl+b 矢印    : ペイン移動"
-echo "   Ctrl+b q       : ペイン番号を表示"
-echo "   Ctrl+b z       : ペインをズーム（もう一度で戻る）"
+echo "ステータス確認:"
+echo "  ./scripts/check_status.sh"
 echo ""
-echo "接続しますか？ [Y/n]"
-read -r response
-
-if [[ "$response" =~ ^[Nn]$ ]]; then
-    echo ""
-    echo "   ...ヤド...じゃあ待ってる..."
-    echo "   tmux attach-session -t $SESSION_NAME で接続できます"
-else
-    tmux attach-session -t "$SESSION_NAME"
-fi
+echo "停止:"
+echo "  ./stop.sh"
