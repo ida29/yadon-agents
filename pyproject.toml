@@ -2,7 +2,7 @@
 name = "yadon-agents"
 version = "0.1.0"
 description = "ヤドン・エージェント — マルチエージェントシステム"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 
 [project.optional-dependencies]
 gui = ["PyQt6>=6.5.0"]

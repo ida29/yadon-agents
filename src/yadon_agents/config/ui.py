@@ -1,5 +1,7 @@
 """UI設定（ピクセルサイズ、フォント、色、アニメーション等）"""
 
+from __future__ import annotations
+
 COLOR_SCHEMES = {
     "normal": {"body": "#F3D599", "head": "#D32A38", "accent": "#F3D599"},
     "shiny": {"body": "#FFCCFF", "head": "#FF99CC", "accent": "#FFCCFF"},
@@ -13,6 +15,8 @@ YADORAN_COLORS = {
     "shellder": "#8B7D9B",
     "shellder_light": "#B0A0C0",
     "shellder_spike": "#6B5D7B",
+    "shellder_tongue": "#E84060",
+    "shellder_eye": "#F0F0F0",
 }
 
 PIXEL_SIZE = 4
@@ -40,5 +44,3 @@ MOVEMENT_DURATION = 15000
 TINY_MOVEMENT_RANGE = 20
 SMALL_MOVEMENT_RANGE = 80
 TINY_MOVEMENT_PROBABILITY = 0.95
-
-DEBUG_LOG = "/tmp/yadon_pet_agents_debug.log"
