@@ -1,18 +1,18 @@
-"""AgentThread — BaseAgentをQThreadでラップしてGUIと統合する"""
+"""AgentThread — AgentPortをQThreadでラップしてGUIと統合する"""
 
 from __future__ import annotations
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from yadon_agents.agent.base import BaseAgent
+from yadon_agents.domain.ports.agent_port import AgentPort
 
 
 class AgentThread(QThread):
-    """BaseAgentをQThreadで動かし、吹き出しリクエストをシグナルに変換する。"""
+    """AgentPortをQThreadで動かし、吹き出しリクエストをシグナルに変換する。"""
 
     bubble_request = pyqtSignal(str, str, int)  # (text, bubble_type, duration_ms)
 
-    def __init__(self, agent: BaseAgent):
+    def __init__(self, agent: AgentPort):
         super().__init__()
         self.agent = agent
         self.agent.on_bubble = lambda text, btype, dur: self.bubble_request.emit(

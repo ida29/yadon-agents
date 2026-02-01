@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+__all__ = ["summarize_for_bubble"]
+
 # 絶対パス（/Users/... /tmp/... /home/... 等）をファイル名だけに短縮する
 _ABS_PATH_RE = re.compile(r"/(?:Users|home|tmp|var|private|opt|etc)(?:/[\w._-]+)+")
 

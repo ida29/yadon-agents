@@ -5,7 +5,64 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Literal, TypedDict
+
+__all__ = [
+    "generate_task_id",
+    "TaskMessage",
+    "ResultMessage",
+    "StatusQuery",
+    "StatusResponse",
+    "TaskPayload",
+    "TaskMessageDict",
+    "ResultPayload",
+    "ResultMessageDict",
+    "StatusQueryDict",
+    "StatusResponseDict",
+]
+
+
+# --- TypedDict: ソケット通信のJSON形状 ---
+
+# NOTE: "from" はPython予約語だが、TypedDictではキーとして使用可能。
+# ただしリテラルで構築する分には問題ない。
+
+
+class TaskPayload(TypedDict):
+    instruction: str
+    project_dir: str
+
+
+class TaskMessageDict(TypedDict):
+    type: Literal["task"]
+    id: str
+    payload: TaskPayload
+
+
+class ResultPayload(TypedDict):
+    output: str
+    summary: str
+
+
+class ResultMessageDict(TypedDict):
+    type: Literal["result"]
+    id: str
+    status: str
+    payload: ResultPayload
+
+
+class StatusQueryDict(TypedDict):
+    type: Literal["status"]
+
+
+class StatusResponseDict(TypedDict, total=False):
+    type: str
+    state: str
+    current_task: str | None
+    workers: dict[str, str]
+
+
+# --- dataclass: メッセージ構築 ---
 
 
 def generate_task_id() -> str:
@@ -23,7 +80,7 @@ class TaskMessage:
     project_dir: str
     task_id: str = field(default_factory=generate_task_id)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "type": "task",
             "id": self.task_id,
@@ -44,7 +101,7 @@ class ResultMessage:
     output: str
     summary: str
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "type": "result",
             "id": self.task_id,
@@ -62,7 +119,7 @@ class StatusQuery:
     """ステータス照会メッセージ"""
     from_agent: str
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "type": "status",
             "from": self.from_agent,
@@ -77,8 +134,8 @@ class StatusResponse:
     current_task: str | None = None
     workers: dict[str, str] | None = None
 
-    def to_dict(self) -> dict[str, Any]:
-        result: dict[str, Any] = {
+    def to_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
             "type": "status_response",
             "from": self.from_agent,
             "state": self.state,
