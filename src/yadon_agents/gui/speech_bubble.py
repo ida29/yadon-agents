@@ -55,25 +55,17 @@ class SpeechBubble(QWidget):
 
         metrics = self.fontMetrics()
 
-        # 画面幅に基づく最大幅を算出
-        screen = QApplication.primaryScreen().geometry()
-        max_bubble_width = max(BUBBLE_MIN_WIDTH, int(screen.width() * 0.6))
+        # 80文字幅ベースで最大幅を算出
+        max_bubble_width = metrics.horizontalAdvance('M' * 80) + BUBBLE_PADDING * 2 + 20
+        bubble_width = max_bubble_width  # 常に80文字幅固定
 
         content_max_width = max_bubble_width - BUBBLE_PADDING * 2 - 20
-        text_width = metrics.horizontalAdvance(text)
 
-        if text_width > content_max_width:
-            # テキストを折り返す（日本語対応: 文字単位で折り返し）
-            lines = _wrap_text(text, metrics, content_max_width)
-            self.wrapped_text = '\n'.join(lines)
-            num_lines = len(lines)
-            max_line_width = max(metrics.horizontalAdvance(line) for line in lines)
-            bubble_width = max(BUBBLE_MIN_WIDTH, max_line_width + BUBBLE_PADDING * 2 + 20)
-            bubble_height = num_lines * metrics.height() + 40
-        else:
-            self.wrapped_text = text
-            bubble_width = max(BUBBLE_MIN_WIDTH, text_width + BUBBLE_PADDING * 2 + 20)
-            bubble_height = metrics.height() + 40
+        # 常に _wrap_text を通してテキストを折り返す
+        lines = _wrap_text(text, metrics, content_max_width)
+        self.wrapped_text = '\n'.join(lines)
+        num_lines = len(lines)
+        bubble_height = num_lines * metrics.height() + 40
 
         self.setFixedSize(bubble_width, bubble_height)
         self.update_position()
