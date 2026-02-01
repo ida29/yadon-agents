@@ -6,6 +6,8 @@
     yadon stop              — 全エージェント停止
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import signal
@@ -14,10 +16,14 @@ import sys
 import time
 from pathlib import Path
 
-from yadon_agents.domain.types import YADON_COUNT
-
-# プロジェクトルート（src/yadon_agents/cli.py → 3階層上）
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+from yadon_agents import PROJECT_ROOT
+from yadon_agents.config.agent import (
+    PROCESS_STOP_INTERVAL,
+    PROCESS_STOP_RETRIES,
+    SOCKET_WAIT_INTERVAL,
+    SOCKET_WAIT_TIMEOUT,
+    get_yadon_count,
+)
 
 
 def _pid_dir() -> Path:
@@ -40,7 +46,7 @@ def _has_pyqt6() -> bool:
         return False
 
 
-def _ensure_pythonpath() -> dict:
+def _ensure_pythonpath() -> dict[str, str]:
     """PYTHONPATHにsrc/を含む環境変数を返す。"""
     env = os.environ.copy()
     src_dir = str(PROJECT_ROOT / "src")
@@ -67,60 +73,89 @@ def _save_pid(name: str, pid: int) -> None:
     (_pid_dir() / f"{name}.pid").write_text(str(pid))
 
 
-def _stop_daemon(name: str) -> None:
+def _read_pid(name: str) -> int | None:
+    """PIDファイルを読み、プロセスが生存していればPIDを返す。"""
     pid_file = _pid_dir() / f"{name}.pid"
     if not pid_file.exists():
-        return
+        return None
     pid = int(pid_file.read_text().strip())
     try:
-        os.kill(pid, 0)  # 生存確認
+        os.kill(pid, 0)
+        return pid
     except OSError:
         pid_file.unlink(missing_ok=True)
+        return None
+
+
+def _stop_daemons(names: list[str]) -> None:
+    """全デーモンにSIGTERMを送信し、並列に終了を待つ。"""
+    # 生存中のプロセスを収集 & 一斉にSIGTERM送信
+    targets: list[tuple[str, int]] = []
+    for name in names:
+        pid = _read_pid(name)
+        if pid is not None:
+            os.kill(pid, signal.SIGTERM)
+            targets.append((name, pid))
+
+    if not targets:
         return
 
-    os.kill(pid, signal.SIGTERM)
-    for _ in range(20):
-        time.sleep(0.5)
-        try:
-            os.kill(pid, 0)
-        except OSError:
+    # 全プロセスの終了を待つ（最大 PROCESS_STOP_RETRIES * PROCESS_STOP_INTERVAL 秒）
+    remaining = list(targets)
+    for _ in range(PROCESS_STOP_RETRIES):
+        if not remaining:
             break
-    else:
+        time.sleep(PROCESS_STOP_INTERVAL)
+        still_alive = []
+        for name, pid in remaining:
+            try:
+                os.kill(pid, 0)
+                still_alive.append((name, pid))
+            except OSError:
+                print(f"  {name}: 停止 (PID={pid})")
+                (_pid_dir() / f"{name}.pid").unlink(missing_ok=True)
+        remaining = still_alive
+
+    # タイムアウト — 残存プロセスをSIGKILL
+    for name, pid in remaining:
         try:
             os.kill(pid, signal.SIGKILL)
         except OSError:
             pass
+        print(f"  {name}: 強制停止 (PID={pid})")
+        (_pid_dir() / f"{name}.pid").unlink(missing_ok=True)
 
-    print(f"  {name}: 停止 (PID={pid})")
-    pid_file.unlink(missing_ok=True)
 
-
-def _wait_sockets(names: list[str], timeout: int = 15) -> bool:
+def _wait_sockets(names: list[str], timeout: int = SOCKET_WAIT_TIMEOUT) -> bool:
     """ソケットファイルの作成を待つ。"""
     from yadon_agents.infra.protocol import agent_socket_path
-    for _ in range(timeout * 2):
-        if all(os.path.exists(agent_socket_path(n)) for n in names):
+    iterations = int(timeout / SOCKET_WAIT_INTERVAL)
+    for _ in range(iterations):
+        if all(Path(agent_socket_path(n)).exists() for n in names):
             return True
-        time.sleep(0.5)
+        time.sleep(SOCKET_WAIT_INTERVAL)
     return False
 
 
 def _cleanup_sockets() -> None:
     """ソケットファイルを削除する。"""
-    import glob
-    for pattern in ["/tmp/yadon-agent-*.sock", "/tmp/yadon-pet-*.sock"]:
-        for sock in glob.glob(pattern):
+    tmp = Path("/tmp")
+    for pattern in ["yadon-agent-*.sock", "yadon-pet-*.sock"]:
+        for sock in tmp.glob(pattern):
             try:
-                os.unlink(sock)
+                sock.unlink()
             except OSError:
                 pass
 
 
 def cmd_start(work_dir: str) -> None:
     """全エージェント起動"""
+    yadon_count = get_yadon_count()
+
     print()
     print("\033[0;36mヤドン・エージェント 起動中...\033[0m")
     print("   困ったなぁ...でもやるか...")
+    print(f"   ヤドン数: {yadon_count}")
     print()
 
     # 既存プロセスの停止
@@ -131,10 +166,10 @@ def cmd_start(work_dir: str) -> None:
     use_gui = _has_pyqt6()
     log_dir = _log_dir()
 
-    # --- ヤドン 1-4 起動 ---
+    # --- ヤドン 1-N 起動 ---
     if use_gui:
         print("\033[0;36mヤドンペット+デーモンを起動中...\033[0m")
-        for n in range(1, YADON_COUNT + 1):
+        for n in range(1, yadon_count + 1):
             cmd = [sys.executable, "-m", "yadon_agents.gui.yadon_pet", "--number", str(n)]
             pid = _start_process(cmd, log_dir / f"yadon-{n}.log")
             _save_pid(f"yadon-{n}", pid)
@@ -142,14 +177,14 @@ def cmd_start(work_dir: str) -> None:
     else:
         print("\033[0;36mヤドンデーモンを起動中...\033[0m")
         print("\033[1;33m!\033[0m PyQt6なし — デスクトップペットなしで起動")
-        for n in range(1, YADON_COUNT + 1):
+        for n in range(1, yadon_count + 1):
             cmd = [sys.executable, "-m", "yadon_agents.agent.worker", "--number", str(n)]
             pid = _start_process(cmd, log_dir / f"yadon-{n}.log")
             _save_pid(f"yadon-{n}", pid)
             print(f"  ヤドン{n}: デーモン PID={pid}")
 
     # ソケット待機
-    yadon_names = [f"yadon-{n}" for n in range(1, YADON_COUNT + 1)]
+    yadon_names = [f"yadon-{n}" for n in range(1, yadon_count + 1)]
     print("  ソケット待機中...", end="", flush=True)
     if _wait_sockets(yadon_names):
         print(" OK")
@@ -231,9 +266,9 @@ def cmd_stop() -> None:
     """全エージェント停止"""
     print("停止中...")
 
-    for n in range(1, YADON_COUNT + 1):
-        _stop_daemon(f"yadon-{n}")
-    _stop_daemon("yadoran")
+    yadon_count = get_yadon_count()
+    all_names = [f"yadon-{n}" for n in range(1, yadon_count + 1)] + ["yadoran"]
+    _stop_daemons(all_names)
 
     # フォールバック: プロセス名で残存プロセスを停止
     for pattern in ["yadon_pet", "yadoran_pet", "yadon_daemon", "yadoran_daemon",
@@ -256,14 +291,14 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command")
 
     start_parser = subparsers.add_parser("start", help="全エージェント起動")
-    start_parser.add_argument("work_dir", nargs="?", default=os.getcwd(), help="作業ディレクトリ")
+    start_parser.add_argument("work_dir", nargs="?", default=str(Path.cwd()), help="作業ディレクトリ")
 
     subparsers.add_parser("stop", help="全エージェント停止")
 
     args = parser.parse_args()
 
     if args.command == "start":
-        work_dir = os.path.abspath(args.work_dir)
+        work_dir = str(Path(args.work_dir).resolve())
         cmd_start(work_dir)
     elif args.command == "stop":
         cmd_stop()
