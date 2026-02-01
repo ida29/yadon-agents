@@ -6,7 +6,7 @@
 #
 # `yadon start` のシェルラッパー
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
 

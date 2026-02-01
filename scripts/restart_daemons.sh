@@ -6,7 +6,7 @@
 #
 # 使用法: restart_daemons.sh
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -20,6 +20,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
+
+YADON_COUNT="${YADON_COUNT:-4}"
 
 echo ""
 echo -e "${CYAN}デーモン再起動中...${NC}"
@@ -37,7 +39,7 @@ fi
 # ヤドン1〜4起動
 if $HAS_PYQT6; then
     echo -e "${CYAN}ヤドンペット+デーモンを起動中...${NC}"
-    for YADON_NUM in 1 2 3 4; do
+    for YADON_NUM in $(seq 1 "$YADON_COUNT"); do
         python3 -m yadon_agents.gui.yadon_pet \
             --number "$YADON_NUM" \
             >> "$LOG_DIR/yadon-${YADON_NUM}.log" 2>&1 &
@@ -47,7 +49,7 @@ if $HAS_PYQT6; then
     done
 else
     echo -e "${CYAN}ヤドンデーモンを起動中...${NC}"
-    for YADON_NUM in 1 2 3 4; do
+    for YADON_NUM in $(seq 1 "$YADON_COUNT"); do
         python3 -m yadon_agents.agent.worker --number "$YADON_NUM" \
             >> "$LOG_DIR/yadon-${YADON_NUM}.log" 2>&1 &
         YADON_PID=$!
@@ -61,7 +63,7 @@ echo -n "  ソケット待機中..."
 ALL_READY=false
 for i in $(seq 1 30); do
     ALL_READY=true
-    for YADON_NUM in 1 2 3 4; do
+    for YADON_NUM in $(seq 1 "$YADON_COUNT"); do
         if [ ! -S "/tmp/yadon-agent-yadon-${YADON_NUM}.sock" ]; then
             ALL_READY=false
             break

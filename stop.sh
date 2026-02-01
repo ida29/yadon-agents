@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # ヤドン・エージェント 停止スクリプト
 # `yadon stop` のシェルラッパー
@@ -21,11 +22,9 @@ stop_daemon() {
     if [ -f "$pid_file" ]; then
         PID=$(cat "$pid_file")
         if kill -0 "$PID" 2>/dev/null; then
-            kill "$PID" 2>/dev/null
+            kill "$PID" 2>/dev/null || true
             for i in $(seq 1 10); do
-                if ! kill -0 "$PID" 2>/dev/null; then
-                    break
-                fi
+                kill -0 "$PID" 2>/dev/null || break
                 sleep 0.5
             done
             if kill -0 "$PID" 2>/dev/null; then
@@ -37,9 +36,11 @@ stop_daemon() {
     fi
 }
 
+YADON_COUNT="${YADON_COUNT:-4}"
+
 echo "停止中..."
 
-for YADON_NUM in 1 2 3 4; do
+for YADON_NUM in $(seq 1 "$YADON_COUNT"); do
     stop_daemon "yadon-${YADON_NUM}"
 done
 stop_daemon "yadoran"
@@ -55,9 +56,7 @@ done
 
 # ソケットのクリーンアップ
 for SOCK in /tmp/yadon-agent-*.sock /tmp/yadon-pet-*.sock; do
-    if [ -S "$SOCK" ] 2>/dev/null; then
-        rm -f "$SOCK"
-    fi
+    [ -S "$SOCK" ] && rm -f "$SOCK" || true
 done
 
 echo "停止完了"

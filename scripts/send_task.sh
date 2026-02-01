@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # ヤドキングがヤドランにタスクを送信するスクリプト
 #
 # 使用法: send_task.sh <instruction> [project_dir]
@@ -11,8 +12,8 @@
 #   ./scripts/send_task.sh "READMEを更新してください"
 #   ./scripts/send_task.sh "テストを実行してください" /Users/yida/work/some-project
 
-INSTRUCTION="$1"
-PROJECT_DIR="$2"
+INSTRUCTION="${1:-}"
+PROJECT_DIR="${2:-}"
 
 if [ -z "$INSTRUCTION" ]; then
     echo "使用法: send_task.sh <instruction> [project_dir]" >&2

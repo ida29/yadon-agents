@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # ヤドンペットに吹き出しメッセージを送信するヘルパー
 #
 # 使用法: pet_say.sh <yadon_number> <message> [bubble_type] [duration_ms]
@@ -14,8 +15,8 @@
 #   ./scripts/pet_say.sh 2 "レビュー完了" hook
 #   ./scripts/pet_say.sh 3 "テスト通った" claude 6000
 
-YADON_NUM="$1"
-MESSAGE="$2"
+YADON_NUM="${1:-}"
+MESSAGE="${2:-}"
 TYPE="${3:-normal}"
 DURATION="${4:-4000}"
 

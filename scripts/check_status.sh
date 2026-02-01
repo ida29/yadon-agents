@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # エージェントのステータスを照会するスクリプト
 #
 # 使用法: check_status.sh [agent_name]
@@ -11,6 +12,7 @@
 #   ./scripts/check_status.sh yadoran   # ヤドランのみ
 #   ./scripts/check_status.sh yadon-1   # ヤドン1のみ
 
+YADON_COUNT="${YADON_COUNT:-4}"
 TARGET="${1:-all}"
 
 query_agent() {
@@ -23,12 +25,13 @@ query_agent() {
     fi
 
     RESPONSE=$(python3 -c "
-import socket, json, sys
+import socket, json, sys, os
 
+sock_path = sys.argv[1]
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.settimeout(5)
 try:
-    sock.connect('$sock')
+    sock.connect(sock_path)
     msg = json.dumps({'type': 'status', 'from': 'check_status'})
     sock.sendall(msg.encode('utf-8'))
     sock.shutdown(socket.SHUT_WR)
@@ -57,7 +60,7 @@ except Exception as e:
     print(f'エラー: {e}')
 finally:
     sock.close()
-" 2>&1)
+" "$sock" 2>&1)
 
     echo "  ${name}: ${RESPONSE}"
 }
@@ -67,7 +70,7 @@ echo ""
 
 if [ "$TARGET" = "all" ]; then
     query_agent "yadoran"
-    for i in 1 2 3 4; do
+    for i in $(seq 1 "$YADON_COUNT"); do
         query_agent "yadon-${i}"
     done
 else
