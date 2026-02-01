@@ -5,108 +5,136 @@
 ヤドキング・ヤドラン・ヤドンによるマルチエージェントシステム。
 のんびりしているが、確実にタスクをこなす。
 
-## 階層構造
+## アーキテクチャ
 
 ```
 トレーナー（人間）
-  │
-  ▼ おねがい
+  │ 直接会話
+  ▼
 ┌──────────────────┐
-│   YADOKING       │ ← ヤドキング（プロジェクト統括・最終レビュー）
-│   (opus)         │   「困ったなぁ...」
+│   ヤドキング       │  claude --model opus（ユーザーが起動）
+│                  │  send_task.sh / check_status.sh を実行
 └──────┬───────────┘
-       │ tmux send-keys        ▲
-       ▼                        │ 最終レビュー依頼
-┌──────────────────┐            │
-│   YADORAN        │ ← ヤドラン（タスク管理・一次レビュー）
-│   (sonnet)       │   「しっぽが...なんか言ってる...」
-└──────┬───────────┘
-       │ tmux send-keys        ▲
-       ▼                        │ 成果物報告
-┌───┬───┬───┬───┐              │
-│Y1 │Y2 │Y3 │Y4 │ ← ヤドン（実働部隊）
-│(haiku)         │   「...やぁん?」
-└───┴───┴───┴───┘
+       │ Unix socket: /tmp/yadon-agent-yadoran.sock
+       ▼
+┌──────────────────┐
+│   ヤドラン        │  デスクトップペット + デーモン (PyQt6 + Python)
+│   pet + daemon   │  タスク受信 → claude -p (sonnet) で分解 → ヤドンに配分
+└──┬───┬───┬───┬──┘
+   │   │   │   │ Unix socket: /tmp/yadon-agent-yadon-N.sock
+   ▼   ▼   ▼   ▼
+┌──┐ ┌──┐ ┌──┐ ┌──┐
+│Y1│ │Y2│ │Y3│ │Y4│  デスクトップペット + デーモン (PyQt6 + Python)
+└──┘ └──┘ └──┘ └──┘  タスク受信 → claude -p (haiku) で実行 → 結果返却
 ```
+
+※ PyQt6がない環境では全エージェントがスタンドアロンデーモンとして起動（ペットなし）
 
 ## 役割対応表
 
-| ポケモン | モデル | 役割 |
-|----------|--------|------|
-| ヤドキング | opus | 戦略統括、最終レビュー、人間とのIF |
-| ヤドラン | sonnet | タスク分解、一次レビュー、進捗管理 |
-| ヤドン×4 | haiku | 実作業（コーディング等） |
+| ポケモン | モデル | 動作モード | 役割 |
+|----------|--------|-----------|------|
+| ヤドキング | opus | ユーザーが直接起動 | 戦略統括、最終レビュー、人間とのIF |
+| ヤドラン | sonnet | ペット+デーモン (claude -p) | タスク分解、ヤドンへの配分 |
+| ヤドン×4 | haiku | ペット+デーモン (claude -p) | 実作業（コーディング等） |
 
-## レビューフロー
+## 通信プロトコル
 
-```
-ヤドン作業完了 → ヤドラン一次レビュー → ヤドキング最終レビュー → トレーナーに報告
-                    │                      │
-                    ▼                      ▼
-                 差し戻し               差し戻し
-```
+全エージェント間通信はUnixドメインソケット。JSON over Unix socket。
+
+### ソケットパス
+
+| 用途 | パス | 所有プロセス |
+|---|---|---|
+| ヤドラン | `/tmp/yadon-agent-yadoran.sock` | `pet/yadoran_pet.py` (または `daemons/yadoran_daemon.py`) |
+| ヤドン1 | `/tmp/yadon-agent-yadon-1.sock` | `pet/yadon_pet.py --number 1` (または `daemons/yadon_daemon.py`) |
+| ヤドン2 | `/tmp/yadon-agent-yadon-2.sock` | `pet/yadon_pet.py --number 2` |
+| ヤドン3 | `/tmp/yadon-agent-yadon-3.sock` | `pet/yadon_pet.py --number 3` |
+| ヤドン4 | `/tmp/yadon-agent-yadon-4.sock` | `pet/yadon_pet.py --number 4` |
+| ヤドラン吹き出し | `/tmp/yadon-pet-yadoran.sock` | `pet/yadoran_pet.py` (吹き出し用) |
+| ヤドン吹き出し | `/tmp/yadon-pet-N.sock` | `pet/yadon_pet.py` (吹き出し用) |
+
+### 通信フロー
+
+1. 人間がヤドキングに依頼
+2. ヤドキングが `./scripts/send_task.sh "タスク内容"` を実行（ブロック）
+3. ヤドランデーモンがソケットで受信
+4. ヤドランが `claude -p --model sonnet` でタスク分解
+5. サブタスクをヤドン1〜4のソケットに並列送信
+6. 各ヤドンが `claude -p --model haiku` で実行（ペットに吹き出し表示）
+7. 結果がヤドラン → ヤドキングへ逆流
 
 ## ディレクトリ構成
 
 ```
 yadon-agents/
 ├── CLAUDE.md                 # このファイル
-├── first_setup.sh            # 初回セットアップ
-├── start.sh                  # 毎日の起動スクリプト
+├── start.sh                  # 起動スクリプト（デーモン + ペット）
 ├── stop.sh                   # 停止スクリプト
-├── config/
-│   ├── settings.yaml         # 設定
-│   └── panes.yaml            # tmuxペインID（自動生成）
+├── daemons/
+│   ├── socket_protocol.py    # 共有プロトコル（send/receive, ソケット作成, パス定義）
+│   ├── yadon_daemon.py       # ヤドンデーモン（PyQt6なし環境用フォールバック）
+│   └── yadoran_daemon.py     # ヤドランデーモン（タスク分解 → ヤドンに並列配分 → 結果集約）
+├── pet/
+│   ├── yadon_pet.py          # ヤドン デスクトップペット + エージェントデーモン統合
+│   ├── yadoran_pet.py        # ヤドラン デスクトップペット + エージェントデーモン統合
+│   ├── agent_socket_server.py       # ヤドン用エージェントソケットサーバー (QThread)
+│   ├── yadoran_agent_socket_server.py # ヤドラン用エージェントソケットサーバー (QThread)
+│   ├── socket_server.py      # ペット吹き出しソケットサーバー (QThread, 共通)
+│   ├── config.py             # ペット設定（ヤドン + ヤドラン）
+│   ├── pixel_data.py         # ヤドン ドット絵データ
+│   ├── yadoran_pixel_data.py # ヤドラン ドット絵データ
+│   ├── speech_bubble.py      # 吹き出しウィジェット
+│   ├── pokemon_menu.py       # 右クリックメニュー
+│   └── utils.py              # ユーティリティ
 ├── instructions/
 │   ├── yadoking.md           # ヤドキングの指示書
-│   ├── yadoran.md            # ヤドランの指示書
-│   ├── yadon.md              # ヤドンの指示書
-│   └── yadon_pokoa.md        # ヤドン（ポケモア風）の指示書
-├── memory/
-│   ├── yadoking_pending.md
-│   ├── exchange_counter.md
-│   └── global_context.md
-├── logs/                     # ログファイル格納
-├── .claude/
-│   ├── settings.json         # PreToolUseフック設定
-│   └── hooks/
-│       └── enforce-role.sh   # 役割別ツール制御スクリプト
+│   ├── yadoran.md            # ヤドランの指示書（デーモンモード）
+│   └── yadon.md              # ヤドンの指示書（デーモンモード）
 ├── scripts/
-│   ├── notify.sh             # エージェント間通知
-│   ├── get_pane.sh           # ペインID取得ヘルパー
-│   ├── auto_runner.sh        # 自動タスク検出
-│   ├── start_verification.sh # 継続検証スクリプト
-│   ├── monitor_tokens.sh     # トークン監視（単発）
-│   └── token_monitor.sh      # トークン監視（常駐）
-├── templates/
-│   └── context_template.md
-└── docs/
-    └── dashboard.md          # リアルタイムダッシュボード
+│   ├── send_task.sh          # ヤドキング → ヤドランへタスク送信
+│   ├── check_status.sh       # エージェントのステータス照会
+│   └── pet_say.sh            # ヤドンペットに吹き出し送信
+├── config/
+│   └── settings.yaml         # 設定
+├── memory/                   # 学習記録
+├── logs/                     # ログファイル
+├── .pids/                    # デーモンPIDファイル（自動生成）
+└── .claude/
+    ├── settings.json         # PreToolUseフック設定
+    └── hooks/
+        └── enforce-role.sh   # 役割別ツール制御スクリプト
 ```
 
-## 通信プロトコル
+## 起動方法
 
-全てのエージェント間通信は `tmux send-keys` で直接メッセージを送信する方式。
+```bash
+# デーモン + ペット起動
+./start.sh
 
-### ヤドキング → ヤドラン
-tmux send-keysでヤドランに直接指示を送る
+# 停止
+./stop.sh
 
-### ヤドラン → ヤドン
-tmux send-keysで各ヤドンに直接タスクを送る
+# ヤドキング起動（別ターミナルで）
+claude --model opus
+```
 
-### ヤドン → ヤドラン
-tmux send-keysでヤドランに直接報告を送る
+起動すると以下が立ち上がる（PyQt6あり環境）:
+- ペット+デーモン: ヤドラン（1プロセス）
+- ペット+デーモン: ヤドン1〜4（4プロセス）
 
-### ステータス更新
-`docs/dashboard.md` をヤドランが更新
+PyQt6なし環境ではすべてスタンドアロンデーモンとして起動（ペットなし）。
 
-## コンパクション復帰手順
+## scripts/
 
-コンテキストがリセットされた場合：
+### send_task.sh
+ヤドキングがヤドランにタスクを送信するスクリプト。Unixソケット経由でJSON送受信。結果が返るまでブロックする。
 
-1. まず `instructions/` 配下の自分の指示書を読む
-2. `docs/dashboard.md` で現在の状況を確認
-3. 作業を再開
+### check_status.sh
+全エージェントまたは特定エージェントのステータスをUnixソケット経由で照会。
+
+### pet_say.sh
+ペットに吹き出しメッセージを送信するヘルパー。ペットソケット経由。ヤドン1〜4に対応（番号指定）。
 
 ## 役割制御（PreToolUseフック）
 
@@ -117,37 +145,3 @@ tmux send-keysでヤドランに直接報告を送る
 | ヤドキング | `yadoking` | 全禁止 | 禁止 | 許可 |
 | ヤドラン | `yadoran` | dashboard.mdのみ | 禁止 | 許可 |
 | ヤドン1-4 | `yadon` | 全許可 | 全許可 | 全許可 |
-
-`start.sh` がClaude起動時に `export AGENT_ROLE=...` を設定する。
-
-## scripts/
-
-### get_pane.sh
-ペインID取得ヘルパー。`./scripts/get_pane.sh yadoran` のように使用。panes設定ファイルを自動探索し、堅牢なYAML解析でペインIDを返す。
-
-### notify.sh
-エージェント間通知スクリプト。tmux send-keysでメッセージを送信し、入力欄確認・再送信処理を行う。引数・ペイン存在チェック付き。
-
-### auto_runner.sh
-自動タスク検出スクリプト。10秒ごとにdashboard.mdをチェックして新規タスクがあれば通知。
-
-## 起動方法
-
-```bash
-# 初回のみ
-./first_setup.sh
-
-# 毎回
-./start.sh
-
-# 停止
-./stop.sh
-```
-
-## 検証完了
-
-- **50回以上の交換達成済み** (memory/exchange_counter.md参照)
-- メッセージパッシング動作確認済み
-- システム負荷テスト全合格
-
-# テスト完了 v2
