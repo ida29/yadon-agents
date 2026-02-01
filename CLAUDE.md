@@ -24,8 +24,9 @@
    │   │   │   │ Unix socket: /tmp/yadon-agent-yadon-N.sock
    ▼   ▼   ▼   ▼
 ┌──┐ ┌──┐ ┌──┐ ┌──┐
-│Y1│ │Y2│ │Y3│ │Y4│  デスクトップペット + エージェント (PyQt6 + Python)
+│Y1│ │Y2│ │..│ │YN│  デスクトップペット + エージェント (PyQt6 + Python)
 └──┘ └──┘ └──┘ └──┘  タスク受信 → claude -p (haiku) で実行 → 結果返却
+                      N = YADON_COUNT環境変数（デフォルト4、範囲1-8）
 ```
 
 PyQt6がない環境ではペットなしのスタンドアロンデーモンとして起動。
@@ -36,7 +37,7 @@ PyQt6がない環境ではペットなしのスタンドアロンデーモンと
 |----------|--------|-----------|------|
 | ヤドキング | opus | 対話型 (`claude --model opus`) | 戦略統括、最終レビュー、人間とのIF |
 | ヤドラン | sonnet | バックグラウンド (`claude -p`) | タスクを3フェーズに分解、ヤドンへの並列配分、結果集約 |
-| ヤドン×4 | haiku | バックグラウンド (`claude -p`) | 実作業（コーディング、テスト、ドキュメント、レビュー等） |
+| ヤドン×N | haiku | バックグラウンド (`claude -p`) | 実作業（コーディング、テスト、ドキュメント、レビュー等） |
 
 ## パッケージ構成
 
@@ -54,7 +55,7 @@ yadon-agents/
 │       ├── cli.py                    # CLIエントリポイント: yadon start/stop
 │       │
 │       ├── domain/                   # ドメイン層（純粋データ、I/Oなし）
-│       │   ├── types.py             # AgentRole enum, YADON_COUNT = 4
+│       │   ├── types.py             # AgentRole enum
 │       │   └── messages.py          # TaskMessage, ResultMessage, StatusQuery, StatusResponse
 │       │
 │       ├── agent/                    # アプリケーション層（エージェントロジック）
@@ -67,7 +68,7 @@ yadon-agents/
 │       │   └── claude_runner.py     # subprocess.run("claude -p") ラッパー
 │       │
 │       ├── config/                   # 設定
-│       │   ├── agent.py             # メッセージ定数、バリアント、やるきスイッチ
+│       │   ├── agent.py             # メッセージ定数、バリアント、やるきスイッチ、get_yadon_count()
 │       │   └── ui.py                # ピクセルサイズ、フォント、色、アニメーション設定
 │       │
 │       └── gui/                      # GUI層（PyQt6、オプション依存）
@@ -191,7 +192,7 @@ YadonPet はやるきスイッチ等を追加、YadoranPet は最小限のサブ
 1. 人間がヤドキングに依頼
 2. ヤドキングが `send_task.sh "タスク内容"` を実行（ブロック）
 3. ヤドランがソケットで受信 → `claude -p --model sonnet` で3フェーズに分解
-4. **Phase 1 (implement)**: 実装サブタスクをヤドン1〜4に `ThreadPoolExecutor` で並列送信 → 完了待ち
+4. **Phase 1 (implement)**: 実装サブタスクをヤドン1〜Nに `ThreadPoolExecutor` で並列送信 → 完了待ち
 5. **Phase 2 (docs)**: ドキュメント更新サブタスクをヤドンに並列送信 → 完了待ち
 6. **Phase 3 (review)**: レビューサブタスクをヤドンに送信 → 完了待ち
 7. 全フェーズの結果を集約してヤドキングへ返却
@@ -204,6 +205,9 @@ YadonPet はやるきスイッチ等を追加、YadoranPet は最小限のサブ
 # 全エージェント一括起動（ペット+デーモン → ヤドキング）
 ./start.sh [作業ディレクトリ]
 
+# ヤドン数を指定して起動（デフォルト4、範囲1-8）
+YADON_COUNT=6 ./start.sh [作業ディレクトリ]
+
 # 停止（ヤドキング終了時に自動停止、手動停止も可）
 ./stop.sh
 
@@ -212,7 +216,7 @@ YadonPet はやるきスイッチ等を追加、YadoranPet は最小限のサブ
 ```
 
 `start.sh` は `python3 -m yadon_agents.cli start` のラッパー。以下が順に起動する:
-1. ヤドン1〜4（ペット+エージェント or デーモンのみ）
+1. ヤドン1〜N（ペット+エージェント or デーモンのみ、N = `YADON_COUNT` 環境変数、デフォルト4）
 2. ヤドラン（ペット+エージェント or デーモンのみ）
 3. ヤドキング（`claude --model opus` — 対話型、現在のターミナル）
 
@@ -270,7 +274,7 @@ pet_say.sh <yadon_number> <message> [bubble_type] [duration_ms]
 |---|---|---|---|---|
 | ヤドキング | `yadoking` | 全禁止 | 禁止 | 許可 |
 | ヤドラン | `yadoran` | 全禁止 | 禁止 | 許可 |
-| ヤドン1-4 | `yadon` | 全許可 | 全許可 | 全許可 |
+| ヤドン1-N | `yadon` | 全許可 | 全許可 | 全許可 |
 
 `AGENT_ROLE` 未設定時は全て許可（通常のClaude Code使用）。
 jq 未インストール時はフェイルオープン。
