@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import argparse
 import logging
-import signal
-import sys
 from typing import Any
 
 __all__ = ["YadonWorker"]
@@ -85,41 +82,3 @@ class YadonWorker(BaseAgent):
             output=output,
             summary=summary,
         ).to_dict()
-
-
-def main() -> None:
-    from yadon_agents.config.agent import get_yadon_count
-
-    theme = get_theme()
-
-    parser = argparse.ArgumentParser(description=f"{theme.role_names.worker}ワーカー")
-    parser.add_argument("--number", "-n", type=int, required=True, help=f"{theme.role_names.worker}番号 (1-N)")
-    args = parser.parse_args()
-
-    yadon_count = get_yadon_count()
-    if not 1 <= args.number <= yadon_count:
-        print(f"エラー: {theme.role_names.worker}番号は1〜{yadon_count}です", file=sys.stderr)
-        sys.exit(1)
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format=f"[{theme.role_names.worker}-{args.number}] %(asctime)s %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
-    worker = YadonWorker(args.number)
-
-    def signal_handler(signum, frame):
-        worker.stop()
-
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-
-    try:
-        worker.serve_forever()
-    except KeyboardInterrupt:
-        worker.stop()
-
-
-if __name__ == "__main__":
-    main()
