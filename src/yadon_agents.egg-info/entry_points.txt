@@ -1,0 +1,3 @@
+[console_scripts]
+yadon = yadon_agents.cli:main
+

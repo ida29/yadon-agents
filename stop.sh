@@ -1,11 +1,20 @@
 #!/bin/bash
 
 # ヤドン・エージェント 停止スクリプト
+# `yadon stop` のシェルラッパー
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
+
+# CLI経由で停止
+if python3 -c "import yadon_agents" 2>/dev/null; then
+    python3 -m yadon_agents.cli stop
+    exit 0
+fi
+
+# フォールバック: 直接停止
 PID_DIR="$SCRIPT_DIR/.pids"
 
-# デーモンの停止（PIDファイル経由）
 stop_daemon() {
     local name="$1"
     local pid_file="$PID_DIR/${name}.pid"
@@ -30,31 +39,19 @@ stop_daemon() {
 
 echo "停止中..."
 
-# ヤドン1〜4停止
 for YADON_NUM in 1 2 3 4; do
     stop_daemon "yadon-${YADON_NUM}"
 done
-
-# ヤドラン停止
 stop_daemon "yadoran"
 
 # フォールバック: プロセス名で残存プロセスを停止
-if pgrep -f "yadon_daemon.py" > /dev/null 2>&1; then
-    pkill -f "yadon_daemon.py" 2>/dev/null || true
-    echo "  yadon_daemon.py 残存プロセスを停止"
-fi
-if pgrep -f "yadoran_daemon.py" > /dev/null 2>&1; then
-    pkill -f "yadoran_daemon.py" 2>/dev/null || true
-    echo "  yadoran_daemon.py 残存プロセスを停止"
-fi
-if pgrep -f "yadon_pet.py" > /dev/null 2>&1; then
-    pkill -f "yadon_pet.py" 2>/dev/null || true
-    echo "  yadon_pet.py 残存プロセスを停止"
-fi
-if pgrep -f "yadoran_pet.py" > /dev/null 2>&1; then
-    pkill -f "yadoran_pet.py" 2>/dev/null || true
-    echo "  yadoran_pet.py 残存プロセスを停止"
-fi
+for pattern in yadon_daemon.py yadoran_daemon.py yadon_pet.py yadoran_pet.py \
+               yadon_agents.gui.yadon_pet yadon_agents.gui.yadoran_pet \
+               yadon_agents.agent.worker yadon_agents.agent.manager; do
+    if pgrep -f "$pattern" > /dev/null 2>&1; then
+        pkill -f "$pattern" 2>/dev/null || true
+    fi
+done
 
 # ソケットのクリーンアップ
 for SOCK in /tmp/yadon-agent-*.sock /tmp/yadon-pet-*.sock; do

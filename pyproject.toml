@@ -1,0 +1,18 @@
+[project]
+name = "yadon-agents"
+version = "0.1.0"
+description = "ヤドン・エージェント — マルチエージェントシステム"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+gui = ["PyQt6>=6.5.0"]
+
+[project.scripts]
+yadon = "yadon_agents.cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

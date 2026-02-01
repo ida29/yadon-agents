@@ -25,6 +25,15 @@ def agent_socket_path(name: str) -> str:
     return f"{SOCKET_DIR}/yadon-agent-{name}.sock"
 
 
+def pet_socket_path(name: str) -> str:
+    """ペットの吹き出しソケットパスを返す。
+
+    Args:
+        name: "yadoran", "1", "2", "3", "4"
+    """
+    return f"{SOCKET_DIR}/yadon-pet-{name}.sock"
+
+
 def generate_task_id() -> str:
     """タスクIDを生成する。"""
     ts = time.strftime("%Y%m%d-%H%M%S")
@@ -85,10 +94,7 @@ def make_status_message(from_agent: str) -> dict:
 
 
 def create_server_socket(sock_path: str) -> socket.socket:
-    """Unixドメインソケットサーバーを作成する。
-
-    既存のソケットファイルがあれば削除してから作成。
-    """
+    """Unixドメインソケットサーバーを作成する。"""
     if os.path.exists(sock_path):
         os.unlink(sock_path)
 
@@ -99,22 +105,7 @@ def create_server_socket(sock_path: str) -> socket.socket:
 
 
 def send_message(sock_path: str, message: dict, timeout: float = 300.0) -> dict:
-    """Unixソケットにメッセージを送信し、レスポンスを受信する。
-
-    1. 接続
-    2. JSONを送信
-    3. shutdown(SHUT_WR) でEOF通知
-    4. レスポンスを全て読む
-    5. JSONとしてパース
-
-    Args:
-        sock_path: 送信先ソケットパス
-        message: 送信するメッセージ (dict)
-        timeout: タイムアウト秒数 (デフォルト300秒=5分)
-
-    Returns:
-        レスポンスメッセージ (dict)
-    """
+    """Unixソケットにメッセージを送信し、レスポンスを受信する。"""
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
@@ -123,7 +114,6 @@ def send_message(sock_path: str, message: dict, timeout: float = 300.0) -> dict:
         sock.sendall(data)
         sock.shutdown(socket.SHUT_WR)
 
-        # レスポンス受信
         chunks = []
         while True:
             chunk = sock.recv(65536)
@@ -138,16 +128,7 @@ def send_message(sock_path: str, message: dict, timeout: float = 300.0) -> dict:
 
 
 def receive_message(conn: socket.socket) -> dict:
-    """接続済みソケットからメッセージを受信する。
-
-    クライアントが shutdown(SHUT_WR) するまで読み続ける。
-
-    Args:
-        conn: accept() で得た接続ソケット
-
-    Returns:
-        受信メッセージ (dict)
-    """
+    """接続済みソケットからメッセージを受信する。"""
     chunks = []
     while True:
         chunk = conn.recv(65536)
@@ -160,12 +141,7 @@ def receive_message(conn: socket.socket) -> dict:
 
 
 def send_response(conn: socket.socket, message: dict) -> None:
-    """接続済みソケットにレスポンスを送信する。
-
-    Args:
-        conn: accept() で得た接続ソケット
-        message: 送信するレスポンス (dict)
-    """
+    """接続済みソケットにレスポンスを送信する。"""
     data = json.dumps(message, ensure_ascii=False).encode("utf-8")
     conn.sendall(data)
 

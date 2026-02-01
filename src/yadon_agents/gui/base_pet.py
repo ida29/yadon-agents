@@ -1,120 +1,73 @@
-#!/usr/bin/env python3
-"""Yadoran Desktop Pet for yadon-agents.
+"""BasePet — ヤドン/ヤドランの共通ペットロジック
 
-Yadoran (task manager) as a desktop pet with embedded agent daemon.
-Receives tasks via Unix domain socket at /tmp/yadon-agent-yadoran.sock.
-Pet bubble display via /tmp/yadon-pet-yadoran.sock.
+draggable window, face animation, random actions, speech bubble, context menu,
+macOS window elevation を全て共通化。
 """
-import sys
-import random
-import signal
 
-import ctypes
+from __future__ import annotations
+
+import random
+
 from PyQt6.QtWidgets import QApplication, QWidget
 from PyQt6.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QRect, QEvent
-from PyQt6.QtGui import QPainter, QColor, QMouseEvent, QFont, QCursor
-from pokemon_menu import PokemonMenu
+from PyQt6.QtGui import QPainter, QColor, QMouseEvent, QFont
 
-from config import (
+from yadon_agents.config.ui import (
     PIXEL_SIZE, WINDOW_WIDTH, WINDOW_HEIGHT,
     FACE_ANIMATION_INTERVAL,
     RANDOM_ACTION_MIN_INTERVAL, RANDOM_ACTION_MAX_INTERVAL,
     MOVEMENT_DURATION,
     TINY_MOVEMENT_RANGE, SMALL_MOVEMENT_RANGE, TINY_MOVEMENT_PROBABILITY,
     BUBBLE_DISPLAY_TIME, PID_FONT_FAMILY, PID_FONT_SIZE,
-    YADORAN_MESSAGES, YADORAN_WELCOME_MESSAGES,
 )
-from speech_bubble import SpeechBubble
-from socket_server import PetSocketServer
-from yadoran_agent_socket_server import YadoranAgentSocketServer
-from yadoran_pixel_data import build_yadoran_pixel_data
-from utils import log_debug
+from yadon_agents.gui.macos import mac_set_top_nonactivating
+from yadon_agents.gui.speech_bubble import SpeechBubble
+from yadon_agents.gui.pokemon_menu import PokemonMenu
+from yadon_agents.gui.pet_socket_server import PetSocketServer
+from yadon_agents.gui.agent_thread import AgentThread
+from yadon_agents.gui.utils import log_debug
 
 
-def _log_debug(msg: str):
-    log_debug('yadoran_pet', msg)
+class BasePet(QWidget):
+    """共通ペット基盤。サブクラスで pixel_data, label_text, messages 等を設定する。"""
 
-
-def _mac_set_top_nonactivating(widget: QWidget):
-    """macOS: force window to status/floating level without stealing focus."""
-    try:
-        if sys.platform != 'darwin':
-            return
-        view_ptr = int(widget.winId())
-        if not view_ptr:
-            return
-        objc = ctypes.cdll.LoadLibrary('/usr/lib/libobjc.A.dylib')
-        cg = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics')
-
-        sel_registerName = objc.sel_registerName
-        sel_registerName.restype = ctypes.c_void_p
-        sel = lambda name: sel_registerName(name)
-
-        objc.objc_msgSend.restype = ctypes.c_void_p
-        objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-
-        window = objc.objc_msgSend(ctypes.c_void_p(view_ptr), sel(b'window'))
-        if not window:
-            return
-
-        cg.CGWindowLevelForKey.argtypes = [ctypes.c_int]
-        cg.CGWindowLevelForKey.restype = ctypes.c_int
-        KEYS = {
-            'floating': 3,
-            'modal': 8,
-            'status': 18,
-            'popup': 101
-        }
-        levels = {name: int(cg.CGWindowLevelForKey(ctypes.c_int(val))) for name, val in KEYS.items()}
-        level = max(levels.values())
-
-        objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long]
-        objc.objc_msgSend(window, sel(b'setLevel:'), ctypes.c_long(int(level)))
-
-        try:
-            behavior = ctypes.c_ulong(1)
-            objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
-            objc.objc_msgSend(window, sel(b'setCollectionBehavior:'), behavior)
-        except Exception:
-            pass
-
-    except Exception as e:
-        _log_debug("macOS elevate failed: %s" % e)
-
-
-class YadoranPet(QWidget):
     _active_menu = None
 
-    def __init__(self):
+    def __init__(self, label_text: str, pixel_data: list, messages: list):
         super().__init__()
-
-        # Build yadoran pixel data
-        self.pixel_data = build_yadoran_pixel_data()
+        self.label_text = label_text
+        self.pixel_data = pixel_data
+        self.messages = messages
 
         self.face_offset = 0
         self.animation_direction = 1
         self.drag_position = None
-
         self.bubble = None
         self.pokemon_menu = None
 
-        self.label_text = "ヤドラン"
+        # サブクラスで設定
+        self.pet_socket_server: PetSocketServer | None = None
+        self.agent_thread: AgentThread | None = None
 
-        # Socket server for external bubble messages
-        self.socket_server = PetSocketServer("/tmp/yadon-pet-yadoran.sock")
-        self.socket_server.message_received.connect(self._on_external_message)
-        self.socket_server.start()
+        self._init_ui()
+        self._setup_animation()
+        self._setup_random_actions()
 
-        # Agent socket server (yadoran daemon functionality)
-        import os
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.agent_server = YadoranAgentSocketServer(project_dir)
-        self.agent_server.bubble_request.connect(self._on_external_message)
-        self.agent_server.start()
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
-        self.init_ui()
-        self.setup_animation()
-        self.setup_random_actions()
+    def start_servers(
+        self, pet_socket_path: str, agent_thread: AgentThread,
+    ) -> None:
+        """ソケットサーバーとエージェントスレッドを起動する。"""
+        self.pet_socket_server = PetSocketServer(pet_socket_path)
+        self.pet_socket_server.message_received.connect(self._on_external_message)
+        self.pet_socket_server.start()
+
+        self.agent_thread = agent_thread
+        self.agent_thread.bubble_request.connect(self._on_external_message)
+        self.agent_thread.start()
 
     def closeEvent(self, event):
         if self.bubble:
@@ -127,14 +80,18 @@ class YadoranPet(QWidget):
             self.timer.stop()
         if hasattr(self, 'action_timer'):
             self.action_timer.stop()
-        if self.socket_server:
-            self.socket_server.stop()
-        if self.agent_server:
-            self.agent_server.stop()
+        if self.pet_socket_server:
+            self.pet_socket_server.stop()
+        if self.agent_thread:
+            self.agent_thread.stop()
         super().closeEvent(event)
 
-    def init_ui(self):
-        self.setWindowTitle('Yadoran Pet')
+    # ------------------------------------------------------------------
+    # UI Setup
+    # ------------------------------------------------------------------
+
+    def _init_ui(self):
+        self.setWindowTitle(self.label_text)
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
 
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -153,34 +110,36 @@ class YadoranPet(QWidget):
 
         self.show()
         self.raise_()
-        QTimer.singleShot(0, lambda: _mac_set_top_nonactivating(self))
+        QTimer.singleShot(0, lambda: mac_set_top_nonactivating(self))
         self._top_keepalive = QTimer(self)
-        self._top_keepalive.timeout.connect(lambda: _mac_set_top_nonactivating(self))
+        self._top_keepalive.timeout.connect(lambda: mac_set_top_nonactivating(self))
         self._top_keepalive.start(5000)
 
-    def setup_animation(self):
+    def _setup_animation(self):
         self.timer = QTimer()
-        self.timer.timeout.connect(self.animate_face)
+        self.timer.timeout.connect(self._animate_face)
         self.timer.start(FACE_ANIMATION_INTERVAL)
 
-    def setup_random_actions(self):
+    def _setup_random_actions(self):
         self.action_timer = QTimer()
-        self.action_timer.timeout.connect(self.random_action)
-        self.action_timer.start(random.randint(RANDOM_ACTION_MIN_INTERVAL, RANDOM_ACTION_MAX_INTERVAL))
+        self.action_timer.timeout.connect(self._random_action)
+        self.action_timer.start(
+            random.randint(RANDOM_ACTION_MIN_INTERVAL, RANDOM_ACTION_MAX_INTERVAL)
+        )
 
     # ------------------------------------------------------------------
     # External message handling
     # ------------------------------------------------------------------
 
     def _on_external_message(self, text: str, bubble_type: str, duration: int):
-        _log_debug("External message for ヤドラン: %s" % repr(text))
-        self._show_bubble(text, bubble_type=bubble_type, display_time=duration)
+        log_debug("pet", f"External message for {self.label_text}: {text!r}")
+        self.show_bubble(text, bubble_type=bubble_type, display_time=duration)
 
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
 
-    def animate_face(self):
+    def _animate_face(self):
         self.face_offset += self.animation_direction
         if self.face_offset >= 1:
             self.animation_direction = -1
@@ -223,13 +182,19 @@ class YadoranPet(QWidget):
         text_width = metrics.horizontalAdvance(label)
         text_height = metrics.height()
 
-        bg_rect = QRect((self.width() - text_width - 4) // 2, 66, text_width + 4, text_height + 2)
+        bg_rect = QRect(
+            (self.width() - text_width - 4) // 2, 66,
+            text_width + 4, text_height + 2,
+        )
         painter.fillRect(bg_rect, QColor(255, 255, 255, 200))
         painter.setPen(QColor(0, 0, 0))
         painter.drawRect(bg_rect)
 
         painter.setPen(QColor(0, 0, 0))
-        painter.drawText(self.rect().adjusted(0, 68, 0, 0), Qt.AlignmentFlag.AlignHCenter, label)
+        painter.drawText(
+            self.rect().adjusted(0, 68, 0, 0),
+            Qt.AlignmentFlag.AlignHCenter, label,
+        )
 
     # ------------------------------------------------------------------
     # Mouse events
@@ -244,7 +209,7 @@ class YadoranPet(QWidget):
                 pass
             event.accept()
         elif event.button() == Qt.MouseButton.RightButton:
-            self.show_context_menu()
+            self._show_context_menu()
             event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent):
@@ -276,45 +241,66 @@ class YadoranPet(QWidget):
         return super().event(e)
 
     # ------------------------------------------------------------------
-    # Context menu
+    # Context menu (サブクラスでオーバーライド可能)
     # ------------------------------------------------------------------
 
-    def show_context_menu(self):
-        if YadoranPet._active_menu:
-            YadoranPet._active_menu.close()
-            YadoranPet._active_menu = None
+    def _build_menu_items(self, menu: PokemonMenu) -> None:
+        """メニュー項目を追加する。サブクラスでオーバーライド。"""
+        menu.add_item('とじる', 'close')
+
+    def _handle_menu_action(self, action_id: str) -> None:
+        """メニューアクションを処理する。サブクラスでオーバーライド。"""
+        pass
+
+    def _show_context_menu(self):
+        if BasePet._active_menu:
+            BasePet._active_menu.close()
+            BasePet._active_menu = None
 
         if self.pokemon_menu:
             self.pokemon_menu.close()
             self.pokemon_menu = None
 
         self.pokemon_menu = PokemonMenu(self)
-        YadoranPet._active_menu = self.pokemon_menu
+        BasePet._active_menu = self.pokemon_menu
 
-        self.pokemon_menu.add_item('とじる', 'close')
+        self._build_menu_items(self.pokemon_menu)
+        self.pokemon_menu.action_triggered.connect(self._handle_menu_action)
 
-        self.pokemon_menu.show_at(QPoint(
-            self.x() + self.width() + 5,
-            self.y(),
-        ))
+        menu_x = self.x() + self.width() + 5
+        menu_y = self.y()
+
+        screen = QApplication.primaryScreen().geometry()
+        if menu_x + 200 > screen.width():
+            menu_x = self.x() - 200 - 5
+        if menu_y + 100 > screen.height():
+            menu_y = screen.height() - 100
+
+        self.pokemon_menu.show_at(QPoint(menu_x, menu_y))
 
     # ------------------------------------------------------------------
     # Random actions
     # ------------------------------------------------------------------
 
-    def random_action(self):
-        action = random.choice(['nothing', 'nothing', 'nothing', 'speak', 'speak', 'move', 'move_and_speak'])
+    def _random_action(self):
+        action = random.choice([
+            'nothing', 'nothing', 'nothing',
+            'speak', 'speak',
+            'move', 'move_and_speak',
+        ])
 
         if action in ['move', 'move_and_speak']:
-            self.random_move()
+            self._random_move()
 
         if action in ['speak', 'move_and_speak']:
-            self.show_message()
+            self._show_random_message()
 
         self.action_timer.stop()
-        self.action_timer.start(random.randint(RANDOM_ACTION_MIN_INTERVAL, RANDOM_ACTION_MAX_INTERVAL))
+        self.action_timer.start(
+            random.randint(RANDOM_ACTION_MIN_INTERVAL, RANDOM_ACTION_MAX_INTERVAL)
+        )
 
-    def random_move(self):
+    def _random_move(self):
         screen = QApplication.primaryScreen().geometry()
         current_pos = self.pos()
 
@@ -334,9 +320,9 @@ class YadoranPet(QWidget):
         self.animation.setEndValue(QPoint(int(new_x), int(new_y)))
         self.animation.start()
 
-    def show_message(self):
-        message = random.choice(YADORAN_MESSAGES)
-        self._show_bubble(message, 'normal')
+    def _show_random_message(self):
+        message = random.choice(self.messages)
+        self.show_bubble(message, 'normal')
 
     # ------------------------------------------------------------------
     # Bubble / move
@@ -356,7 +342,8 @@ class YadoranPet(QWidget):
                 menu_y = screen.height() - 100
             self.pokemon_menu.move(menu_x, menu_y)
 
-    def _show_bubble(self, message, bubble_type='normal', display_time=None):
+    def show_bubble(self, message: str, bubble_type: str = 'normal', display_time: int | None = None):
+        """Display a speech bubble with the given message."""
         if self.bubble:
             self.bubble.close()
             self.bubble = None
@@ -372,48 +359,3 @@ class YadoranPet(QWidget):
                 self.bubble.close()
                 self.bubble = None
         QTimer.singleShot(display_time, close_bubble)
-
-
-def signal_handler(sig, frame):
-    QApplication.quit()
-    sys.exit(0)
-
-
-def main():
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    app = QApplication(sys.argv)
-
-    # Dummy timer to allow signal processing
-    timer = QTimer()
-    timer.timeout.connect(lambda: None)
-    timer.start(500)
-
-    # Screen positioning
-    screen_obj = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
-    screen = screen_obj.geometry()
-
-    pet = YadoranPet()
-
-    # Position: bottom-right, to the left of yadon-1
-    margin = 20
-    spacing = 10
-    # Place yadoran at position 5 (left of all 4 yadons)
-    x_pos = screen.width() - margin - (WINDOW_WIDTH + spacing) * 5
-    y_pos = screen.height() - margin - WINDOW_HEIGHT
-    pet.move(x_pos, y_pos)
-
-    _log_debug("Started ヤドラン pos=(%d,%d)" % (x_pos, y_pos))
-
-    # Show welcome
-    pet._show_bubble(random.choice(YADORAN_WELCOME_MESSAGES), 'normal')
-
-    try:
-        sys.exit(app.exec())
-    except KeyboardInterrupt:
-        sys.exit(0)
-
-
-if __name__ == '__main__':
-    main()

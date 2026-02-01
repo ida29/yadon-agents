@@ -5,7 +5,7 @@ with a Shellder (purple-grey) clamped on its tail.
 16x16 pixel art representation.
 """
 
-from config import YADORAN_COLORS
+from yadon_agents.config.ui import YADORAN_COLORS
 
 
 def build_yadoran_pixel_data():
@@ -19,7 +19,6 @@ def build_yadoran_pixel_data():
     SL = c['shellder_light']
     SD = c['shellder_spike']
 
-    # Yadoran: face at top, body in middle, shellder on right side (tail)
     pixel_data = [
         # Row 0: ears
         [W,  W,  K,  K,  K,  W,  W,  W,  W,  W,  K,  K,  K,  W,  W,  W],
