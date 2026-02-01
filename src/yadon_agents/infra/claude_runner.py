@@ -1,8 +1,11 @@
 """claude -p サブプロセスラッパー"""
 
+from __future__ import annotations
+
 import logging
 import subprocess
-from typing import Tuple
+
+from yadon_agents.config.agent import CLAUDE_DEFAULT_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -11,9 +14,9 @@ def run_claude(
     prompt: str,
     model: str,
     cwd: str,
-    timeout: int = 600,
+    timeout: int = CLAUDE_DEFAULT_TIMEOUT,
     output_format: str = "text",
-) -> Tuple[str, int]:
+) -> tuple[str, int]:
     """claude -p でプロンプトを実行する。
 
     Returns:
