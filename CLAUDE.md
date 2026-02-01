@@ -29,7 +29,7 @@
                       N = YADON_COUNT環境変数（デフォルト4、範囲1-8）
 ```
 
-PyQt6がない環境ではペットなしのスタンドアロンデーモンとして起動。
+全エージェント（ヤドラン + ヤドン1〜N）は1つのPyQt6プロセス内でスレッド実行される。
 
 ## 役割対応表
 
@@ -48,7 +48,7 @@ yadon-agents/
 ├── pyproject.toml                    # パッケージ定義 + CLIエントリポイント
 ├── setup.py                          # 互換性shim (pip < 23)
 ├── start.sh                          # 起動ラッパー → python3 -m yadon_agents.cli start
-├── stop.sh                           # 停止ラッパー → python3 -m yadon_agents.cli stop
+├── stop.sh                           # 停止スクリプト（pkill + ソケットクリーンアップ）
 ├── src/
 │   └── yadon_agents/
 │       ├── __init__.py
@@ -69,7 +69,8 @@ yadon-agents/
 │       │
 │       ├── infra/                    # インフラ層（I/Oアダプター）
 │       │   ├── protocol.py          # Unixソケット通信（JSON over Unix socket, SHUT_WR EOF）
-│       │   └── claude_runner.py     # SubprocessClaudeRunner(ClaudeRunnerPort): claude -p 実行
+│       │   ├── claude_runner.py     # SubprocessClaudeRunner(ClaudeRunnerPort): claude -p 実行
+│       │   └── process.py           # log_dir()（ログディレクトリ管理）
 │       │
 │       ├── config/                   # 設定
 │       │   ├── agent.py             # メッセージ定数、バリアント、やるきスイッチ、get_yadon_count()
@@ -92,13 +93,16 @@ yadon-agents/
 │   │   ├── test_formatting.py       # summarize_for_bubble テスト
 │   │   └── test_messages.py         # メッセージ型テスト
 │   ├── infra/
-│   │   └── test_protocol.py         # Unixソケット通信テスト
+│   │   ├── test_protocol.py         # Unixソケット通信テスト
+│   │   └── test_claude_runner.py    # SubprocessClaudeRunner テスト（subprocess モック）
 │   └── agent/
-│       └── test_base.py             # BaseAgent テスト
+│       ├── test_base.py             # BaseAgent テスト
+│       ├── test_manager.py          # YadoranManager テスト（_extract_json, _aggregate_results, decompose_task, handle_task統合テスト）
+│       └── test_worker.py           # YadonWorker テスト（handle_task, プロンプト構築）
 ├── scripts/
 │   ├── send_task.sh                 # ヤドキング → ヤドランへタスク送信
 │   ├── check_status.sh              # エージェントのステータス照会
-│   ├── restart_daemons.sh           # デーモンのみ再起動（ヤドキング実行中用）
+│   ├── restart_daemons.sh           # 停止+再起動ラッパー（stop.sh && start.sh）
 │   └── pet_say.sh                   # ヤドンペットに吹き出し送信
 ├── instructions/
 │   ├── yadoking.md                  # ヤドキング指示書
@@ -107,7 +111,6 @@ yadon-agents/
 ├── memory/
 │   └── global_context.md            # ヤドキングの学習記録
 ├── logs/                             # ログファイル（自動生成）
-├── .pids/                            # デーモンPIDファイル（自動生成）
 └── .claude/
     ├── settings.json                 # PreToolUseフック設定
     └── hooks/
@@ -127,12 +130,8 @@ yadon-agents/
 
 ### BaseAgent + on_bubble callback
 
-daemon版とGUI版の唯一の違いは「吹き出し通知の方法」。
-
-- daemon版: on_bubble = None（何もしない）
-- GUI版: on_bubble → pyqtSignal emit
-
-`BaseAgent(AgentPort)` の `on_bubble: BubbleCallback | None` で吸収し、エージェントロジックは1箇所に集約。
+`BaseAgent(AgentPort)` の `on_bubble: BubbleCallback | None` で吹き出し通知を抽象化。
+`AgentThread` が `on_bubble` を pyqtSignal に接続し、GUI層と連携する。
 
 ### AgentThread
 
@@ -143,7 +142,31 @@ daemon版とGUI版の唯一の違いは「吹き出し通知の方法」。
 
 `gui/base_pet.py` で共通ペットロジック（ドラッグ、アニメーション、描画、メニュー、吹き出し）を集約。
 YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_path` を受け取る（DI）。
-具体的な依存の組み立ては各ペットの `main()` 関数（Composition Root）で行う。
+具体的な依存の組み立ては `cli.py` の `cmd_start()` 関数（Composition Root）で行う。
+
+### YadoranManager — JSON抽出とタスク分解
+
+**_extract_json（40-90行）** — Claude出力からJSONを抽出する。
+
+1. JSONフェンス（```json...```）を探索して抽出
+2. 通常のJSON.loads()を試行
+3. 失敗時、出力全体から最初の`{`から最後の`}`までを切り出し（**地の文混在対応**）
+4. それでも失敗なら JSONDecodeError を raise
+
+この3段階のフォールバック仕組みにより、Claude が`こういった JSON が出力されます: {...}`のような形式で返した場合でも抽出可能。
+
+**decompose_task（138-210行）** — タスクを3フェーズに分解する。
+
+- `claude -p --model sonnet` で Prompt Caching を活用
+- タイムアウト: CLAUDE_DECOMPOSE_TIMEOUT（デフォルト 30秒）
+- JSON 解析失敗時ログ：`logger.warning()` で 500 文字まで出力を記録（201行）
+- フォールバック：JSON パース失敗時は元の instruction を implement フェーズ 1 つのサブタスクとして実行継続
+- ログレベル：成功時は INFO（197行）、失敗時は WARNING（201-206行）
+
+### テストの注意点
+
+- **FakeClaudeRunner**: 各テストファイル（`test_manager.py`、`test_worker.py`、`test_claude_runner.py`）内で`ClaudeRunnerPort`モックを独立に定義。共有テストフィクスチャは使用せず、テスト独立性を確保
+- **setup_method**: テストクラスの各テストメソッド実行前に`setup_method`で theme cache をリセット（`from yadon_agents.config.ui import PIXEL_DATA_CACHE; PIXEL_DATA_CACHE.clear()`）
 
 ## 通信プロトコル
 
@@ -223,7 +246,7 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 ## 起動方法
 
 ```bash
-# 全エージェント一括起動（ペット+デーモン → ヤドキング）
+# 全エージェント一括起動（1プロセスで全ペット+ヤドキング）
 ./start.sh [作業ディレクトリ]
 
 # ヤドン数を指定して起動（デフォルト4、範囲1-8）
@@ -232,29 +255,22 @@ YADON_COUNT=6 ./start.sh [作業ディレクトリ]
 # 停止（ヤドキング終了時に自動停止、手動停止も可）
 ./stop.sh
 
-# デーモンのみ再起動（ヤドキング実行中に使用）
+# 停止+再起動
 ./scripts/restart_daemons.sh
 ```
 
-`start.sh` は `python3 -m yadon_agents.cli start` のラッパー。以下が順に起動する:
-1. ヤドン1〜N（ペット+エージェント or デーモンのみ、N = `YADON_COUNT` 環境変数、デフォルト4）
-2. ヤドラン（ペット+エージェント or デーモンのみ）
-3. ヤドキング（`claude --model opus` — 対話型、現在のターミナル）
+`start.sh` は `python3 -m yadon_agents.cli start` のラッパー。1つのPyQt6プロセス内で以下が起動する:
+1. QApplication + メインスレッド（Qtイベントループ）
+2. ヤドン1〜N（QThread: AgentThread + QWidget: YadonPet、N = `YADON_COUNT` 環境変数、デフォルト4）
+3. ヤドラン（QThread: AgentThread + QWidget: YadoranPet）
+4. ヤドキング（threading.Thread: `subprocess.run("claude --model opus")`）
 
-ヤドキング終了時にデーモン+ペットも自動停止する。
-
-### 動作モード
-
-| 環境 | ヤドン起動コマンド | ヤドラン起動コマンド |
-|------|-------------------|---------------------|
-| PyQt6あり | `python3 -m yadon_agents.gui.yadon_pet --number N` | `python3 -m yadon_agents.gui.yadoran_pet` |
-| PyQt6なし | `python3 -m yadon_agents.agent.worker --number N` | `python3 -m yadon_agents.agent.manager` |
+ヤドキング終了時に `QApplication.quit()` → 全ペット・スレッド自動停止。
 
 ### PYTHONPATH
 
 `pip install -e .` の代わりに `PYTHONPATH` でパッケージを参照する。
-start.sh / stop.sh / restart_daemons.sh は自動で `PYTHONPATH=src/` を設定。
-cli.py は子プロセスにも PYTHONPATH を伝播する。
+start.sh は自動で `PYTHONPATH=src/` を設定。
 
 ## scripts/
 
@@ -276,8 +292,7 @@ check_status.sh yadon-1      # ヤドン1のみ
 ```
 
 ### restart_daemons.sh
-ヤドキング実行中にデーモン（ヤドラン + ヤドン1〜N）のみを再起動するスクリプト。
-stop.sh → デーモン再起動の順で実行。ヤドキングは再起動不要。
+全体を停止して再起動するスクリプト。`stop.sh && start.sh "$@"` のラッパー。
 
 ### pet_say.sh
 ペットに吹き出しメッセージを送信するヘルパー。ペットソケット (`/tmp/yadon-pet-N.sock`) 経由。
