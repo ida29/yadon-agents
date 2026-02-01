@@ -6,6 +6,7 @@ macOS window elevation を全て共通化。
 
 from __future__ import annotations
 
+import logging
 import random
 
 from PyQt6.QtWidgets import QApplication, QWidget
@@ -25,7 +26,8 @@ from yadon_agents.gui.speech_bubble import SpeechBubble
 from yadon_agents.gui.pokemon_menu import PokemonMenu
 from yadon_agents.gui.pet_socket_server import PetSocketServer
 from yadon_agents.gui.agent_thread import AgentThread
-from yadon_agents.gui.utils import log_debug
+
+logger = logging.getLogger(__name__)
 
 
 class BasePet(QWidget):
@@ -33,7 +35,7 @@ class BasePet(QWidget):
 
     _active_menu = None
 
-    def __init__(self, label_text: str, pixel_data: list, messages: list):
+    def __init__(self, label_text: str, pixel_data: list[list[str]], messages: list[str]):
         super().__init__()
         self.label_text = label_text
         self.pixel_data = pixel_data
@@ -69,7 +71,7 @@ class BasePet(QWidget):
         self.agent_thread.bubble_request.connect(self._on_external_message)
         self.agent_thread.start()
 
-    def closeEvent(self, event):
+    def closeEvent(self, event) -> None:
         if self.bubble:
             self.bubble.close()
             self.bubble = None
@@ -90,7 +92,7 @@ class BasePet(QWidget):
     # UI Setup
     # ------------------------------------------------------------------
 
-    def _init_ui(self):
+    def _init_ui(self) -> None:
         self.setWindowTitle(self.label_text)
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
 
@@ -115,12 +117,12 @@ class BasePet(QWidget):
         self._top_keepalive.timeout.connect(lambda: mac_set_top_nonactivating(self))
         self._top_keepalive.start(5000)
 
-    def _setup_animation(self):
+    def _setup_animation(self) -> None:
         self.timer = QTimer()
         self.timer.timeout.connect(self._animate_face)
         self.timer.start(FACE_ANIMATION_INTERVAL)
 
-    def _setup_random_actions(self):
+    def _setup_random_actions(self) -> None:
         self.action_timer = QTimer()
         self.action_timer.timeout.connect(self._random_action)
         self.action_timer.start(
@@ -131,15 +133,15 @@ class BasePet(QWidget):
     # External message handling
     # ------------------------------------------------------------------
 
-    def _on_external_message(self, text: str, bubble_type: str, duration: int):
-        log_debug("pet", f"External message for {self.label_text}: {text!r}")
+    def _on_external_message(self, text: str, bubble_type: str, duration: int) -> None:
+        logger.debug("External message for %s: %r", self.label_text, text)
         self.show_bubble(text, bubble_type=bubble_type, display_time=duration)
 
     # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
 
-    def _animate_face(self):
+    def _animate_face(self) -> None:
         self.face_offset += self.animation_direction
         if self.face_offset >= 1:
             self.animation_direction = -1
@@ -147,7 +149,7 @@ class BasePet(QWidget):
             self.animation_direction = 1
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event) -> None:
         if not self.pixel_data:
             return
 
@@ -200,7 +202,7 @@ class BasePet(QWidget):
     # Mouse events
     # ------------------------------------------------------------------
 
-    def mousePressEvent(self, event: QMouseEvent):
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             try:
@@ -212,17 +214,17 @@ class BasePet(QWidget):
             self._show_context_menu()
             event.accept()
 
-    def mouseMoveEvent(self, event: QMouseEvent):
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if event.buttons() == Qt.MouseButton.LeftButton and self.drag_position:
             self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
 
-    def mouseReleaseEvent(self, event: QMouseEvent):
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_position = None
             event.accept()
 
-    def focusInEvent(self, event):
+    def focusInEvent(self, event) -> None:
         try:
             self.clearFocus()
             QApplication.setActiveWindow(None)
@@ -230,7 +232,7 @@ class BasePet(QWidget):
             pass
         event.ignore()
 
-    def event(self, e):
+    def event(self, e) -> bool:
         if e.type() in (QEvent.Type.WindowActivate, QEvent.Type.ActivationChange, QEvent.Type.FocusIn):
             try:
                 self.clearFocus()
@@ -252,7 +254,7 @@ class BasePet(QWidget):
         """メニューアクションを処理する。サブクラスでオーバーライド。"""
         pass
 
-    def _show_context_menu(self):
+    def _show_context_menu(self) -> None:
         if BasePet._active_menu:
             BasePet._active_menu.close()
             BasePet._active_menu = None
@@ -282,7 +284,7 @@ class BasePet(QWidget):
     # Random actions
     # ------------------------------------------------------------------
 
-    def _random_action(self):
+    def _random_action(self) -> None:
         action = random.choice([
             'nothing', 'nothing', 'nothing',
             'speak', 'speak',
@@ -300,7 +302,7 @@ class BasePet(QWidget):
             random.randint(RANDOM_ACTION_MIN_INTERVAL, RANDOM_ACTION_MAX_INTERVAL)
         )
 
-    def _random_move(self):
+    def _random_move(self) -> None:
         screen = QApplication.primaryScreen().geometry()
         current_pos = self.pos()
 
@@ -320,7 +322,7 @@ class BasePet(QWidget):
         self.animation.setEndValue(QPoint(int(new_x), int(new_y)))
         self.animation.start()
 
-    def _show_random_message(self):
+    def _show_random_message(self) -> None:
         message = random.choice(self.messages)
         self.show_bubble(message, 'normal')
 
@@ -328,7 +330,7 @@ class BasePet(QWidget):
     # Bubble / move
     # ------------------------------------------------------------------
 
-    def moveEvent(self, event):
+    def moveEvent(self, event) -> None:
         super().moveEvent(event)
         if self.bubble and self.bubble.isVisible():
             self.bubble.update_position()
@@ -342,7 +344,7 @@ class BasePet(QWidget):
                 menu_y = screen.height() - 100
             self.pokemon_menu.move(menu_x, menu_y)
 
-    def show_bubble(self, message: str, bubble_type: str = 'normal', display_time: int | None = None):
+    def show_bubble(self, message: str, bubble_type: str = 'normal', display_time: int | None = None) -> None:
         """Display a speech bubble with the given message."""
         if self.bubble:
             self.bubble.close()

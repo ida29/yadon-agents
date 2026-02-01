@@ -1,7 +1,9 @@
 """Pokemon-style retro menu widget for Yadon Desktop Pet"""
 
+from __future__ import annotations
+
 from PyQt6.QtWidgets import QWidget
-from PyQt6.QtCore import Qt, QRect, pyqtSignal, QTimer, QEvent
+from PyQt6.QtCore import Qt, QObject, QRect, QPoint, pyqtSignal, QTimer, QEvent
 from PyQt6.QtGui import QPainter, QColor, QFont, QKeyEvent, QMouseEvent, QPen
 
 
@@ -10,9 +12,9 @@ class PokemonMenu(QWidget):
 
     action_triggered = pyqtSignal(str)  # action_id
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self.items = []
+        self.items: list[tuple[str, str, QColor | None]] = []
         self.selected_index = 0
         self.item_height = 24
         self.padding = 8
@@ -41,20 +43,20 @@ class PokemonMenu(QWidget):
         if parent:
             parent.installEventFilter(self)
 
-    def _toggle_cursor(self):
+    def _toggle_cursor(self) -> None:
         self.cursor_visible = not self.cursor_visible
         self.update()
 
-    def add_item(self, text, action_id, color=None):
+    def add_item(self, text: str, action_id: str, color: QColor | None = None) -> None:
         self.items.append((text, action_id, color))
         self._update_size()
 
-    def clear_items(self):
+    def clear_items(self) -> None:
         self.items.clear()
         self.selected_index = 0
         self._update_size()
 
-    def _update_size(self):
+    def _update_size(self) -> None:
         if not self.items:
             return
         font = QFont("monospace", 12)
@@ -70,14 +72,14 @@ class PokemonMenu(QWidget):
         height = len(self.items) * self.item_height + 2 * self.padding + 2 * self.border_width
         self.setFixedSize(int(width), int(height))
 
-    def show_at(self, global_pos):
+    def show_at(self, global_pos: QPoint) -> None:
         self.move(global_pos)
         self.show()
         self.raise_()
         self.selected_index = 0
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
@@ -114,7 +116,7 @@ class PokemonMenu(QWidget):
 
             y += self.item_height
 
-    def keyPressEvent(self, event: QKeyEvent):
+    def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Up:
             self.selected_index = (self.selected_index - 1) % len(self.items)
             self.cursor_visible = True
@@ -130,7 +132,7 @@ class PokemonMenu(QWidget):
         else:
             super().keyPressEvent(event)
 
-    def mousePressEvent(self, event: QMouseEvent):
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             y = event.position().y()
             item_y = self.padding + self.border_width
@@ -141,26 +143,28 @@ class PokemonMenu(QWidget):
                     break
                 item_y += self.item_height
 
-    def _trigger_current_action(self):
+    def _trigger_current_action(self) -> None:
         if 0 <= self.selected_index < len(self.items):
             _, action_id, _ = self.items[self.selected_index]
             self.action_triggered.emit(action_id)
-            if hasattr(self.parent(), '__class__'):
-                parent_class = self.parent().__class__
-                if hasattr(parent_class, '_active_menu') and parent_class._active_menu == self:
+            parent = self.parent()
+            if parent is not None:
+                parent_class = type(parent)
+                if getattr(parent_class, '_active_menu', None) is self:
                     parent_class._active_menu = None
             self.close()
 
-    def eventFilter(self, source, event):
+    def eventFilter(self, source: QObject | None, event: QEvent) -> bool:
         if self.isVisible() and event.type() == QEvent.Type.KeyPress:
             self.keyPressEvent(event)
             return True
         return super().eventFilter(source, event)
 
-    def closeEvent(self, event):
+    def closeEvent(self, event) -> None:
         self.cursor_blink_timer.stop()
-        if hasattr(self.parent(), '__class__'):
-            parent_class = self.parent().__class__
-            if hasattr(parent_class, '_active_menu') and parent_class._active_menu == self:
+        parent = self.parent()
+        if parent is not None:
+            parent_class = type(parent)
+            if getattr(parent_class, '_active_menu', None) is self:
                 parent_class._active_menu = None
         super().closeEvent(event)

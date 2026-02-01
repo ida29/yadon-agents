@@ -1,5 +1,7 @@
 """Speech bubble widget for Yadon Desktop Pet"""
 
+from __future__ import annotations
+
 from PyQt6.QtWidgets import QWidget, QApplication
 from PyQt6.QtCore import Qt, QTimer, QPoint
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QPolygon, QFont
@@ -11,7 +13,7 @@ from yadon_agents.config.ui import (
 
 
 class SpeechBubble(QWidget):
-    def __init__(self, text, parent_widget, bubble_type='normal'):
+    def __init__(self, text: str, parent_widget: QWidget, bubble_type: str = 'normal'):
         super().__init__()
         self.parent_widget = parent_widget
         self.text = text
@@ -63,7 +65,7 @@ class SpeechBubble(QWidget):
         self.follow_timer.timeout.connect(self.update_position)
         self.follow_timer.start(50)
 
-    def update_position(self):
+    def update_position(self) -> None:
         if not self.parent_widget or not self.parent_widget.isVisible():
             self.close()
             return
@@ -94,14 +96,14 @@ class SpeechBubble(QWidget):
 
         self.move(bubble_x, bubble_y)
 
-    def close(self):
+    def close(self) -> None:
         if hasattr(self, 'follow_timer') and self.follow_timer:
             self.follow_timer.stop()
             self.follow_timer = None
         self.parent_widget = None
         super().close()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
@@ -144,7 +146,7 @@ class SpeechBubble(QWidget):
         text_rect = self.rect().adjusted(BUBBLE_PADDING, 12, -BUBBLE_PADDING, -16)
 
         display_text = self.wrapped_text if hasattr(self, 'wrapped_text') else self.text
-        if any(c.isascii() for c in display_text):
+        if display_text.isascii():
             display_text = display_text.upper()
 
         painter.drawText(

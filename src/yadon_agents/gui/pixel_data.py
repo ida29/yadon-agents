@@ -1,9 +1,11 @@
 """Pixel data builder for Yadon Desktop Pet"""
 
+from __future__ import annotations
+
 from yadon_agents.config.ui import COLOR_SCHEMES
 
 
-def build_pixel_data(variant='normal'):
+def build_pixel_data(variant: str = 'normal') -> list[list[str]]:
     """Build pixel data for a specific Yadon variant"""
     colors = COLOR_SCHEMES.get(variant, COLOR_SCHEMES['normal'])
 

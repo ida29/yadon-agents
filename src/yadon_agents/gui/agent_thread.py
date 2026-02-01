@@ -1,5 +1,7 @@
 """AgentThread — BaseAgentをQThreadでラップしてGUIと統合する"""
 
+from __future__ import annotations
+
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from yadon_agents.agent.base import BaseAgent

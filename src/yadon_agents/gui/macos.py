@@ -1,12 +1,17 @@
 """macOS window elevation — ウィンドウを最前面に固定する"""
 
+from __future__ import annotations
+
 import ctypes
+import logging
 import sys
 
-from yadon_agents.gui.utils import log_debug
+from PyQt6.QtWidgets import QWidget
+
+logger = logging.getLogger(__name__)
 
 
-def mac_set_top_nonactivating(widget) -> None:
+def mac_set_top_nonactivating(widget: QWidget) -> None:
     """macOS: force window to status/floating level without stealing focus."""
     try:
         if sys.platform != "darwin":
@@ -54,4 +59,4 @@ def mac_set_top_nonactivating(widget) -> None:
             pass
 
     except Exception as e:
-        log_debug("macos", f"elevate failed: {e}")
+        logger.debug("elevate failed: %s", e)
