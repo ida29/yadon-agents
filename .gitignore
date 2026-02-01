@@ -10,6 +10,9 @@ queue/yadoking_to_yadoran.yaml
 # Daemon PID files
 .pids/
 
+# Log files
+logs/
+
 # Python cache
 __pycache__/
 *.pyc
