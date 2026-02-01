@@ -1,11 +1,17 @@
 #!/bin/bash
 
 # ヤドン・エージェント 起動スクリプト
-# デーモン(ヤドラン + ヤドン1〜4) + ペット を起動する
+# 使用法: yadon [作業ディレクトリ]
+#   作業ディレクトリ省略時はカレントディレクトリで起動
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# シンボリックリンク経由でも実体のディレクトリを解決
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
+
+# 作業ディレクトリ（引数 or カレント）
+WORK_DIR="${1:-$(pwd)}"
+WORK_DIR="$(cd "$WORK_DIR" && pwd)"
 
 # PIDファイルディレクトリ
 PID_DIR="$SCRIPT_DIR/.pids"
@@ -14,8 +20,6 @@ mkdir -p "$PID_DIR"
 # ログディレクトリ
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
-
-cd "$SCRIPT_DIR"
 
 # カラー設定
 RED='\033[0;31m'
@@ -130,19 +134,39 @@ if [ ! -S "/tmp/yadon-agent-yadoran.sock" ]; then
 fi
 
 # =============================================================
-# 完了
+# 3. ヤドキング起動 (claude --model opus)
+#    終了時にデーモン+ペットも自動停止
 # =============================================================
 echo ""
-echo -e "${GREEN}OK${NC} 起動完了"
+echo -e "${GREEN}OK${NC} ヤドラン+ヤドン起動完了"
 echo ""
-echo "ヤドキングを起動するには、別ターミナルで:"
-echo "  claude --model opus"
+echo "ヤドキング（claude --model opus）を起動します..."
 echo ""
-echo "ヤドキングからタスクを送信:"
-echo "  ./scripts/send_task.sh \"タスク内容\""
-echo ""
-echo "ステータス確認:"
-echo "  ./scripts/check_status.sh"
-echo ""
-echo "停止:"
-echo "  ./stop.sh"
+
+# ヤドキング終了時にデーモンも自動停止
+cleanup() {
+    echo ""
+    echo "ヤドキング終了 — デーモン+ペットを停止中..."
+    "$SCRIPT_DIR/stop.sh" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# 作業ディレクトリに移動してヤドキング起動
+cd "$WORK_DIR"
+
+# システムプロンプト: 指示書 + スクリプト絶対パス
+YADON_SYSTEM_PROMPT="$(cat "$SCRIPT_DIR/instructions/yadoking.md")
+
+---
+【システム情報】
+- 作業ディレクトリ: $WORK_DIR
+- send_task.sh: $SCRIPT_DIR/scripts/send_task.sh
+- check_status.sh: $SCRIPT_DIR/scripts/check_status.sh
+- restart_daemons.sh: $SCRIPT_DIR/scripts/restart_daemons.sh
+- stop.sh: $SCRIPT_DIR/stop.sh
+- スクリプトは上記の絶対パスで実行すること（./scripts/ は使わない）"
+
+AGENT_ROLE=yadoking claude --model opus --dangerously-skip-permissions --append-system-prompt "$YADON_SYSTEM_PROMPT"
+EXIT_CODE=$?
+
+exit $EXIT_CODE
