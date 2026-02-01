@@ -59,6 +59,7 @@ class YadonDaemon:
             "-p",
             f"instructions/yadon.md を読んで従ってください。\n\nあなたはヤドン{self.number}です。\n\nタスク:\n{instruction}",
             "--model", "haiku",
+            "--dangerously-skip-permissions",
         ]
         logger.info(f"claude -p 実行中: {instruction[:80]}...")
         self.pet_say(f"...やるやぁん... ({instruction[:30]}...)", "claude")
