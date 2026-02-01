@@ -1,11 +1,17 @@
 """BaseAgent — ソケットサーバーループ + コネクション分岐の共通基盤"""
 
+from __future__ import annotations
+
 import json
 import logging
 import socket
 import threading
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
+from yadon_agents.config.agent import SOCKET_ACCEPT_TIMEOUT, SOCKET_CONNECTION_TIMEOUT
+from yadon_agents.config.ui import BUBBLE_DISPLAY_TIME
+from yadon_agents.domain.messages import StatusResponse
 from yadon_agents.infra import protocol as proto
 
 logger = logging.getLogger(__name__)
@@ -20,30 +26,29 @@ class BaseAgent:
         self.name = name
         self.sock_path = sock_path
         self.project_dir = project_dir
-        self.server_sock: Optional[socket.socket] = None
+        self.server_sock: socket.socket | None = None
         self.running = False
-        self.current_task_id: Optional[str] = None
-        self.on_bubble: Optional[BubbleCallback] = None
+        self.current_task_id: str | None = None
+        self.on_bubble: BubbleCallback | None = None
 
-    def bubble(self, text: str, bubble_type: str = "normal", duration: int = 4000) -> None:
+    def bubble(self, text: str, bubble_type: str = "normal", duration: int = BUBBLE_DISPLAY_TIME) -> None:
         if self.on_bubble:
             self.on_bubble(text, bubble_type, duration)
 
-    def handle_task(self, msg: dict) -> dict:
+    def handle_task(self, msg: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError
 
-    def handle_status(self, msg: dict) -> dict:
+    def handle_status(self, msg: dict[str, Any]) -> dict[str, Any]:
         state = "busy" if self.current_task_id else "idle"
-        return {
-            "type": "status_response",
-            "from": self.name,
-            "state": state,
-            "current_task": self.current_task_id,
-        }
+        return StatusResponse(
+            from_agent=self.name,
+            state=state,
+            current_task=self.current_task_id,
+        ).to_dict()
 
     def handle_connection(self, conn: socket.socket) -> None:
         try:
-            conn.settimeout(600)
+            conn.settimeout(SOCKET_CONNECTION_TIMEOUT)
             msg = proto.receive_message(conn)
             msg_type = msg.get("type", "")
 
@@ -81,7 +86,7 @@ class BaseAgent:
 
         while self.running:
             try:
-                self.server_sock.settimeout(1.0)
+                self.server_sock.settimeout(SOCKET_ACCEPT_TIMEOUT)
                 try:
                     conn, _ = self.server_sock.accept()
                 except socket.timeout:
