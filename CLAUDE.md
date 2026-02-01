@@ -48,11 +48,11 @@ yadon-agents/
 ├── pyproject.toml                    # パッケージ定義 + CLIエントリポイント
 ├── setup.py                          # 互換性shim (pip < 23)
 ├── start.sh                          # 起動ラッパー → python3 -m yadon_agents.cli start
-├── stop.sh                           # 停止スクリプト（pkill + ソケットクリーンアップ）
+├── stop.sh                           # 停止スクリプト（pkill + ソケットクリーンアップ、1プロセス統合用）
 ├── src/
 │   └── yadon_agents/
 │       ├── __init__.py
-│       ├── cli.py                    # CLIエントリポイント: yadon start/stop
+│       ├── cli.py                    # Composition Root: yadon start/stop、全依存・QApplication・Qtイベントループを組み立て
 │       │
 │       ├── domain/                   # ドメイン層（純粋データ、I/Oなし）
 │       │   ├── types.py             # AgentRole enum
@@ -70,7 +70,7 @@ yadon-agents/
 │       ├── infra/                    # インフラ層（I/Oアダプター）
 │       │   ├── protocol.py          # Unixソケット通信（JSON over Unix socket, SHUT_WR EOF）
 │       │   ├── claude_runner.py     # SubprocessClaudeRunner(ClaudeRunnerPort): claude -p 実行
-│       │   └── process.py           # log_dir()（ログディレクトリ管理）
+│       │   └── process.py           # log_dir()（ログディレクトリ生成のみ、PID管理なし）
 │       │
 │       ├── config/                   # 設定
 │       │   ├── agent.py             # メッセージ定数、バリアント、やるきスイッチ、get_yadon_count()
@@ -138,11 +138,27 @@ yadon-agents/
 `gui/agent_thread.py` で `AgentPort` を QThread でラップ。
 `bubble_request` シグナルが BasePet の `show_bubble` スロットに接続される。
 
-### BasePet + Composition Root
+### BasePet + Composition Root（GUI層）
 
 `gui/base_pet.py` で共通ペットロジック（ドラッグ、アニメーション、描画、メニュー、吹き出し）を集約。
 YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_path` を受け取る（DI）。
-具体的な依存の組み立ては `cli.py` の `cmd_start()` 関数（Composition Root）で行う。
+
+### cmd_start() — グローバル Composition Root
+
+`cli.py` の `cmd_start()` 関数がグローバルな Composition Root として機能する。
+
+**責務:**
+1. **QApplication + Qtイベントループ作成** — 1つのプロセス内で全ペット・ワーカー・マネージャーを駆動
+2. **全依存の組み立て** — YadonWorker N個 → AgentThread ラップ → YadonPet 構築 → YadoranManager → YadoranPet 構築
+3. **ログディレクトリ確保** — `log_dir()` で PID ファイルなしの統一ログ領域を初期化
+4. **ソケット待機** — `_wait_sockets()` で全ワーカー・マネージャーの起動完了を同期
+5. **コーディネーター（Opus）起動** — `subprocess.run(["claude", "--model", "opus", ...])` で人間インターフェース
+6. **終了処理** — コーディネーター終了 → `QApplication.quit()` で全ペット・スレッド自動停止 → ソケット削除
+
+**特徴:**
+- **1プロセス統合** — 複数の独立したデーモンではなく、1つの PyQt6 QApplication で全ペット + 全エージェント を同時起動
+- **PID管理撤去** — ファイルベースのPID追跡は不要。プロセス終了時 `QApplication.quit()` で自動停止
+- **スケーラビリティ** — `YADON_COUNT` で ワーカー数を 1〜8 に動的調整可能。マネージャーは常時1個固定
 
 ### YadoranManager — JSON抽出とタスク分解
 
@@ -259,18 +275,62 @@ YADON_COUNT=6 ./start.sh [作業ディレクトリ]
 ./scripts/restart_daemons.sh
 ```
 
-`start.sh` は `python3 -m yadon_agents.cli start` のラッパー。1つのPyQt6プロセス内で以下が起動する:
-1. QApplication + メインスレッド（Qtイベントループ）
-2. ヤドン1〜N（QThread: AgentThread + QWidget: YadonPet、N = `YADON_COUNT` 環境変数、デフォルト4）
-3. ヤドラン（QThread: AgentThread + QWidget: YadoranPet）
-4. ヤドキング（threading.Thread: `subprocess.run("claude --model opus")`）
+### 1プロセス統合アーキテクチャ
 
-ヤドキング終了時に `QApplication.quit()` → 全ペット・スレッド自動停止。
+`start.sh` は `python3 -m yadon_agents.cli start` のラッパー。**1つのPyQt6プロセス**内で以下が起動する:
+
+1. **QApplication + Qtイベントループ（メインスレッド）** — 全ウィジェット、全Qtシグナル・スロット、タイマーを駆動
+2. **ワーカーエージェント 1〜N（QThread × N）** — 各 AgentThread が YadonWorker を実行。ソケットサーバーループで ヤドランからのタスク受信
+3. **マネージャーエージェント 1個（QThread × 1）** — AgentThread が YadoranManager を実行。3フェーズ分解・並列dispatch・結果集約、ヤドキングからのタスク受信
+4. **コーディネーター（ヤドキング）（threading.Thread × 1）** — `subprocess.run(["claude", "--model", "opus", ...])`。人間との対話、send_task.sh 呼び出し
+
+**プロセス終了フロー:**
+- ヤドキング（opus）が終了 → Ctrl+C または exit コマンド
+- `cmd_start()` の `QApplication.quit()` で Qtイベントループ終了
+- 全 AgentThread・ペット ウィジェット自動停止
+- ソケット削除（`_cleanup_sockets()`）
+- プロセス完全終了
 
 ### PYTHONPATH
 
 `pip install -e .` の代わりに `PYTHONPATH` でパッケージを参照する。
 start.sh は自動で `PYTHONPATH=src/` を設定。
+
+### PID管理の撤去
+
+旧アーキテクチャでは複数のデーモンプロセスを独立起動し、PID ファイルで管理していた。
+
+**1プロセス統合への移行:**
+- ✅ **PID ファイル廃止** — 1プロセス内で全エージェント起動のため不要
+- ✅ **log_dir()への一本化** — `log_dir()` は **ログディレクトリのみ**生成。PID追跡なし
+- ✅ **stop.sh の簡素化** — `pkill -f "yadon_agents.cli start"` で1プロセス停止。ソケット削除のみ
+
+`infra/process.py` の `log_dir()`:
+```python
+def log_dir() -> Path:
+    """ログディレクトリ確保（PID管理なし、ディレクトリ生成のみ）"""
+    base = Path.home() / ".yadon-agents" / "logs"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+```
+
+### stop.sh の簡素化
+
+旧アーキテクチャ（複数デーモン）では複数の PID ファイル削除・複数プロセス pkill が必要だった。
+
+**新アーキテクチャ（1プロセス統合）:**
+```bash
+#!/bin/bash
+# 1プロセスを停止 → ソケット削除のみ
+pkill -f "yadon_agents.cli start" 2>/dev/null || true
+for SOCK in /tmp/yadon-agent-*.sock /tmp/yadon-pet-*.sock; do
+    [ -S "$SOCK" ] && rm -f "$SOCK" || true
+done
+```
+
+- プロセスが1つのみなので `pkill` は1回
+- PID ファイル削除処理なし
+- ソケット削除はクリーンアップ用（丁寧さのため、通常は自動削除される）
 
 ## scripts/
 
