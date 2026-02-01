@@ -7,9 +7,30 @@ from PyQt6.QtCore import Qt, QTimer, QPoint
 from PyQt6.QtGui import QPainter, QColor, QBrush, QPen, QPolygon, QFont
 
 from yadon_agents.config.ui import (
-    BUBBLE_MAX_WIDTH, BUBBLE_MIN_WIDTH, BUBBLE_HEIGHT,
+    BUBBLE_MIN_WIDTH,
     BUBBLE_PADDING, BUBBLE_FONT_FAMILY, BUBBLE_FONT_SIZE,
 )
+
+
+def _wrap_text(text: str, metrics, max_width: int) -> list[str]:
+    """テキストを最大幅で折り返す。日本語（スペースなし）にも対応。"""
+    lines: list[str] = []
+    for paragraph in text.split('\n'):
+        if not paragraph:
+            lines.append('')
+            continue
+        current_line = ''
+        for char in paragraph:
+            test_line = current_line + char
+            if metrics.horizontalAdvance(test_line) <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = char
+        if current_line:
+            lines.append(current_line)
+    return lines or ['']
 
 
 class SpeechBubble(QWidget):
@@ -33,30 +54,26 @@ class SpeechBubble(QWidget):
         self.setFont(font)
 
         metrics = self.fontMetrics()
-        text_width = metrics.horizontalAdvance(text)
-        if text_width > BUBBLE_MAX_WIDTH - 40:
-            lines = []
-            words = text.split(' ')
-            current_line = ''
-            for word in words:
-                test_line = current_line + ' ' + word if current_line else word
-                if metrics.horizontalAdvance(test_line) <= BUBBLE_MAX_WIDTH - 40:
-                    current_line = test_line
-                else:
-                    if current_line:
-                        lines.append(current_line)
-                    current_line = word
-            if current_line:
-                lines.append(current_line)
 
+        # 画面幅に基づく最大幅を算出
+        screen = QApplication.primaryScreen().geometry()
+        max_bubble_width = max(BUBBLE_MIN_WIDTH, int(screen.width() * 0.6))
+
+        content_max_width = max_bubble_width - BUBBLE_PADDING * 2 - 20
+        text_width = metrics.horizontalAdvance(text)
+
+        if text_width > content_max_width:
+            # テキストを折り返す（日本語対応: 文字単位で折り返し）
+            lines = _wrap_text(text, metrics, content_max_width)
             self.wrapped_text = '\n'.join(lines)
             num_lines = len(lines)
-            bubble_width = BUBBLE_MAX_WIDTH
-            bubble_height = max(BUBBLE_HEIGHT, num_lines * metrics.height() + 40)
+            max_line_width = max(metrics.horizontalAdvance(line) for line in lines)
+            bubble_width = max(BUBBLE_MIN_WIDTH, max_line_width + BUBBLE_PADDING * 2 + 20)
+            bubble_height = num_lines * metrics.height() + 40
         else:
             self.wrapped_text = text
-            bubble_width = max(BUBBLE_MIN_WIDTH, text_width + 60)
-            bubble_height = BUBBLE_HEIGHT
+            bubble_width = max(BUBBLE_MIN_WIDTH, text_width + BUBBLE_PADDING * 2 + 20)
+            bubble_height = metrics.height() + 40
 
         self.setFixedSize(bubble_width, bubble_height)
         self.update_position()
