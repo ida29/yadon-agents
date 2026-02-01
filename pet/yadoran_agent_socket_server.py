@@ -9,9 +9,8 @@ import json
 import os
 import socket
 import subprocess
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional
+from typing import Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -39,13 +38,9 @@ class YadoranAgentSocketServer(QThread):
     - "status" messages: returns current state and worker statuses
 
     Emits:
-    - task_started(task_id, instruction): when a task begins
-    - task_completed(task_id, status, summary): when a task finishes
     - bubble_request(text, bubble_type, duration_ms): request pet bubble display
     """
 
-    task_started = pyqtSignal(str, str)       # (task_id, instruction)
-    task_completed = pyqtSignal(str, str, str)  # (task_id, status, summary)
     bubble_request = pyqtSignal(str, str, int)  # (text, bubble_type, duration_ms)
 
     def __init__(self, project_dir):
@@ -132,9 +127,8 @@ class YadoranAgentSocketServer(QThread):
         project_dir = payload.get("project_dir", self.project_dir)
 
         _log_debug("Task received: %s" % task_id)
-        self.task_started.emit(task_id, instruction)
         self.bubble_request.emit(
-            "...しっぽが...なんか言ってる... (%s...)" % instruction[:20],
+            "...ヤドキングがなんか言ってる... (%s...)" % instruction[:20],
             "claude", 4000,
         )
 
@@ -172,7 +166,6 @@ class YadoranAgentSocketServer(QThread):
         else:
             self.bubble_request.emit("...一部失敗した...", "claude", 4000)
 
-        self.task_completed.emit(task_id, overall_status, combined_summary)
         self._current_task_id = None
 
         return proto.make_result_message(
@@ -210,7 +203,7 @@ class YadoranAgentSocketServer(QThread):
 
         try:
             result = subprocess.run(
-                ["claude", "-p", prompt, "--model", "sonnet", "--output-format", "text"],
+                ["claude", "-p", prompt, "--model", "sonnet", "--dangerously-skip-permissions", "--output-format", "text"],
                 cwd=project_dir,
                 capture_output=True,
                 text=True,

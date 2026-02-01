@@ -9,7 +9,6 @@ import json
 import os
 import socket
 import subprocess
-import threading
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -28,13 +27,9 @@ class AgentSocketServer(QThread):
     - "status" messages: returns current idle/busy state
 
     Emits:
-    - task_started(task_id, instruction): when a task begins
-    - task_completed(task_id, status, summary): when a task finishes
     - bubble_request(text, bubble_type, duration_ms): request pet bubble display
     """
 
-    task_started = pyqtSignal(str, str)       # (task_id, instruction)
-    task_completed = pyqtSignal(str, str, str)  # (task_id, status, summary)
     bubble_request = pyqtSignal(str, str, int)  # (text, bubble_type, duration_ms)
 
     def __init__(self, yadon_number, project_dir):
@@ -138,7 +133,6 @@ class AgentSocketServer(QThread):
         project_dir = payload.get("project_dir", self.project_dir)
 
         _log_debug("Task received: %s" % task_id)
-        self.task_started.emit(task_id, instruction)
         self.bubble_request.emit(
             "...やるやぁん... (%s...)" % instruction[:30],
             "claude", 4000,
@@ -156,7 +150,6 @@ class AgentSocketServer(QThread):
                 "claude", 4000,
             )
 
-        self.task_completed.emit(task_id, status, summary)
         self._current_task_id = None
 
         return {
@@ -187,6 +180,7 @@ class AgentSocketServer(QThread):
             "instructions/yadon.md を読んで従ってください。\n\n"
             "あなたはヤドン%dです。\n\nタスク:\n%s" % (self.yadon_number, instruction),
             "--model", "haiku",
+            "--dangerously-skip-permissions",
         ]
         _log_debug("Running claude -p: %s..." % instruction[:80])
 

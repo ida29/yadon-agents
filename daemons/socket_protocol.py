@@ -10,7 +10,6 @@ import os
 import socket
 import time
 import uuid
-from pathlib import Path
 from typing import Optional
 
 # ソケットパス
@@ -24,11 +23,6 @@ def agent_socket_path(name: str) -> str:
         name: "yadoran", "yadon-1", "yadon-2", "yadon-3", "yadon-4"
     """
     return f"{SOCKET_DIR}/yadon-agent-{name}.sock"
-
-
-def pet_socket_path(number: int) -> str:
-    """ペットのソケットパスを返す。"""
-    return f"{SOCKET_DIR}/yadon-pet-{number}.sock"
 
 
 def generate_task_id() -> str:

@@ -15,10 +15,9 @@ import socket
 import subprocess
 import sys
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 import socket_protocol as proto
@@ -36,7 +35,6 @@ class YadoranDaemon:
         self.running = False
         self.current_task_id: Optional[str] = None
         self.project_dir = str(Path(__file__).parent.parent)
-        self.task_queue: List[dict] = []
 
     def decompose_task(self, instruction: str, project_dir: str) -> List[dict]:
         """claude -p --model sonnet でタスクを分解する。
@@ -75,7 +73,7 @@ class YadoranDaemon:
 """
         try:
             result = subprocess.run(
-                ["claude", "-p", prompt, "--model", "sonnet", "--output-format", "text"],
+                ["claude", "-p", prompt, "--model", "sonnet", "--dangerously-skip-permissions", "--output-format", "text"],
                 cwd=project_dir,
                 capture_output=True,
                 text=True,
@@ -236,7 +234,6 @@ class YadoranDaemon:
             "state": state,
             "current_task": self.current_task_id,
             "workers": workers,
-            "queue_size": len(self.task_queue),
         }
 
     def handle_connection(self, conn: socket.socket) -> None:
@@ -313,7 +310,7 @@ class YadoranDaemon:
 
 def main():
     parser = argparse.ArgumentParser(description="ヤドランデーモン")
-    args = parser.parse_args()
+    parser.parse_args()
 
     logging.basicConfig(
         level=logging.INFO,

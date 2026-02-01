@@ -78,15 +78,9 @@ fi
 
 # --- ヤドラン ---
 if [ "$AGENT_ROLE" = "yadoran" ]; then
-    # Edit / Write / NotebookEdit → dashboard.md のみ許可
+    # Edit / Write / NotebookEdit → 全てブロック
     if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ] || [ "$TOOL_NAME" = "NotebookEdit" ]; then
-        FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // empty')
-
-        if echo "$FILE_PATH" | grep -qE '(^|/)docs/dashboard\.md$'; then
-            exit 0
-        fi
-
-        echo "【ブロック】ヤドランは docs/dashboard.md 以外のファイルを編集できません。ヤドンに作業を委譲してください。" >&2
+        echo "【ブロック】ヤドランはファイルを編集できません。ヤドンに作業を委譲してください。" >&2
         exit 2
     fi
 
@@ -100,7 +94,7 @@ if [ "$AGENT_ROLE" = "yadoran" ]; then
             exit 2
         fi
 
-        # それ以外のBash（tmux send-keys等）は許可
+        # それ以外のBash（読み取り系）は許可
         exit 0
     fi
 

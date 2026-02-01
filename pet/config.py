@@ -39,7 +39,7 @@ RANDOM_MESSAGES = [
     "うどん　たべる　やぁん......?",
 ]
 
-# Welcome messages when tmux session appears
+# Welcome messages
 WELCOME_MESSAGES = [
     "おてつだい　する　やぁん",
     "がんばる　やぁん",
@@ -48,20 +48,9 @@ WELCOME_MESSAGES = [
     "きょうも　がんばる　やぁん"
 ]
 
-# Goodbye messages when tmux session disappears
-GOODBYE_MESSAGES = [
-    "やぁん!",
-]
-
-# Soft idle hint messages for CLI output pause
-IDLE_HINT_MESSAGES = [
-    "{name}......　そっと　みまもる　やぁん......",
-]
-
 # やるきスイッチ related messages
 YARUKI_SWITCH_ON_MESSAGE = 'やるきスイッチ　ON'
 YARUKI_SWITCH_OFF_MESSAGE = 'やるきスイッチ　OFF'
-YARUKI_FORCE_MESSAGE = "{name}......　やるきスイッチ　いれた　やぁん!"
 YARUKI_MENU_ON_TEXT = 'やるきスイッチ　ONにする'
 YARUKI_MENU_OFF_TEXT = 'やるきスイッチ　OFFにする'
 
@@ -91,7 +80,7 @@ YADORAN_COLORS = {
 
 # Yadoran random messages
 YADORAN_MESSAGES = [
-    "...しっぽが...なんか言ってる...",
+    "...ヤドキングがなんか言ってる...",
     "...タスク分解...する...",
     "...ヤドンたちに...おねがい...",
     "...しっぽの...シェルダーが...かゆい...",
@@ -157,44 +146,12 @@ YADON_VARIANTS = {
     4: 'galarian_shiny',
 }
 
-# Variant order for random selection (fallback)
-VARIANT_ORDER = ['normal', 'shiny', 'galarian', 'galarian_shiny']
-
-# Maximum number of Yadon instances
-MAX_YADON_COUNT = 4
-
-# =====================================================================
-# TMUX & CLI MONITORING CONFIGURATION
-# =====================================================================
-
-# CLI names to monitor for output activity within tmux panes
-TMUX_CLI_NAMES = [
-    'claude',
-]
-
-# Friendly display names for tools (match by substring, case-insensitive)
-FRIENDLY_TOOL_NAMES = {
-    'claude': 'クロバット',
-}
-
-# Monitoring intervals
-CLAUDE_CHECK_INTERVAL = 5000  # 5 seconds (check tmux pane)
-ACTIVITY_CHECK_INTERVAL_MS = 10000  # 10 seconds (check CLI activity)
-OUTPUT_IDLE_THRESHOLD_SEC = 60  # 60 seconds of no output -> notify (legacy)
-
-# Two-stage idle thresholds
-IDLE_SOFT_THRESHOLD_SEC = 10  # First gentle nudge
-IDLE_FORCE_THRESHOLD_SEC = 30  # 30 seconds for strong action
-
 # =====================================================================
 # YARUKI SWITCH (MOTIVATION SWITCH) CONFIGURATION
 # =====================================================================
 
 # Motivation Switch mode: auto input when force threshold reached
 YARUKI_SWITCH_MODE = False
-
-# Keys to send to tmux pane when forcing continuation
-YARUKI_SEND_KEYS = ['Up', 'Enter']
 
 # =====================================================================
 # SYSTEM CONFIGURATION

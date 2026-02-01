@@ -5,7 +5,7 @@
 #
 # 引数:
 #   instruction  - タスクの指示内容
-#   project_dir  - 作業ディレクトリ (省略時: yadon-agentsのルート)
+#   project_dir  - 作業ディレクトリ (省略時: カレントディレクトリ)
 #
 # 例:
 #   ./scripts/send_task.sh "READMEを更新してください"
@@ -19,12 +19,9 @@ if [ -z "$INSTRUCTION" ]; then
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-# デフォルトのproject_dir
+# デフォルトのproject_dir（カレントディレクトリ）
 if [ -z "$PROJECT_DIR" ]; then
-    PROJECT_DIR="$WORK_DIR"
+    PROJECT_DIR="$(pwd)"
 fi
 
 SOCKET="/tmp/yadon-agent-yadoran.sock"

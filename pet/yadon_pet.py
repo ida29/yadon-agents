@@ -10,14 +10,13 @@ import random
 import signal
 import argparse
 import ctypes
-import sys as _sys
 from PyQt6.QtWidgets import QApplication, QWidget
 from PyQt6.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QRect, QEvent
 from PyQt6.QtGui import QPainter, QColor, QMouseEvent, QFont, QCursor
 from pokemon_menu import PokemonMenu
 
 from config import (
-    COLOR_SCHEMES, RANDOM_MESSAGES, WELCOME_MESSAGES, GOODBYE_MESSAGES,
+    RANDOM_MESSAGES, WELCOME_MESSAGES,
     PIXEL_SIZE, WINDOW_WIDTH, WINDOW_HEIGHT,
     FACE_ANIMATION_INTERVAL, RANDOM_ACTION_MIN_INTERVAL, RANDOM_ACTION_MAX_INTERVAL,
     MOVEMENT_DURATION,
@@ -25,7 +24,6 @@ from config import (
     BUBBLE_DISPLAY_TIME, PID_FONT_FAMILY, PID_FONT_SIZE,
     YADON_VARIANTS,
     FACE_ANIMATION_INTERVAL_FAST,
-    FRIENDLY_TOOL_NAMES,
     YARUKI_SWITCH_MODE,
     YARUKI_SWITCH_ON_MESSAGE, YARUKI_SWITCH_OFF_MESSAGE,
     YARUKI_MENU_ON_TEXT, YARUKI_MENU_OFF_TEXT,
@@ -45,7 +43,7 @@ def _log_debug(msg: str):
 def _mac_set_top_nonactivating(widget: QWidget):
     """macOS: force window to status/floating level without stealing focus."""
     try:
-        if _sys.platform != 'darwin':
+        if sys.platform != 'darwin':
             return
         view_ptr = int(widget.winId())
         if not view_ptr:
@@ -277,7 +275,7 @@ class YadonPet(QWidget):
                 pass
             event.accept()
         elif event.button() == Qt.MouseButton.RightButton:
-            self.show_context_menu(event.globalPosition().toPoint())
+            self.show_context_menu()
             event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent):
@@ -312,7 +310,7 @@ class YadonPet(QWidget):
     # Context menu
     # ------------------------------------------------------------------
 
-    def show_context_menu(self, global_pos):
+    def show_context_menu(self):
         if YadonPet._active_menu:
             YadonPet._active_menu.close()
             YadonPet._active_menu = None
@@ -452,9 +450,6 @@ def main():
     parser = argparse.ArgumentParser(description='Yadon Desktop Pet for yadon-agents')
     parser.add_argument('--number', type=int, required=True, help='Yadon number (1-4)')
     parser.add_argument('--variant', default=None, help='Color variant (normal/shiny/galarian/galarian_shiny)')
-    # Legacy args (ignored)
-    parser.add_argument('--pane', default=None, help=argparse.SUPPRESS)
-    parser.add_argument('--session', default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     # Determine variant: explicit arg > per-number config > normal

@@ -63,10 +63,4 @@ for SOCK in /tmp/yadon-agent-*.sock /tmp/yadon-pet-*.sock; do
     fi
 done
 
-# ロックファイルのクリーンアップ
-LOCK_FILE="$SCRIPT_DIR/.verification_running"
-if [ -f "$LOCK_FILE" ]; then
-    rm -f "$LOCK_FILE"
-fi
-
 echo "停止完了"

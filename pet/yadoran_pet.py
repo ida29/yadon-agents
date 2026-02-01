@@ -8,9 +8,8 @@ Pet bubble display via /tmp/yadon-pet-yadoran.sock.
 import sys
 import random
 import signal
-import argparse
+
 import ctypes
-import sys as _sys
 from PyQt6.QtWidgets import QApplication, QWidget
 from PyQt6.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QRect, QEvent
 from PyQt6.QtGui import QPainter, QColor, QMouseEvent, QFont, QCursor
@@ -39,7 +38,7 @@ def _log_debug(msg: str):
 def _mac_set_top_nonactivating(widget: QWidget):
     """macOS: force window to status/floating level without stealing focus."""
     try:
-        if _sys.platform != 'darwin':
+        if sys.platform != 'darwin':
             return
         view_ptr = int(widget.winId())
         if not view_ptr:
@@ -245,7 +244,7 @@ class YadoranPet(QWidget):
                 pass
             event.accept()
         elif event.button() == Qt.MouseButton.RightButton:
-            self.show_context_menu(event.globalPosition().toPoint())
+            self.show_context_menu()
             event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent):
@@ -280,7 +279,7 @@ class YadoranPet(QWidget):
     # Context menu
     # ------------------------------------------------------------------
 
-    def show_context_menu(self, global_pos):
+    def show_context_menu(self):
         if YadoranPet._active_menu:
             YadoranPet._active_menu.close()
             YadoranPet._active_menu = None
@@ -381,9 +380,6 @@ def signal_handler(sig, frame):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Yadoran Desktop Pet for yadon-agents')
-    args = parser.parse_args()
-
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
