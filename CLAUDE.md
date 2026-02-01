@@ -56,16 +56,20 @@ yadon-agents/
 │       │
 │       ├── domain/                   # ドメイン層（純粋データ、I/Oなし）
 │       │   ├── types.py             # AgentRole enum
-│       │   └── messages.py          # TaskMessage, ResultMessage, StatusQuery, StatusResponse
+│       │   ├── messages.py          # TaskMessage, ResultMessage, StatusQuery, StatusResponse
+│       │   ├── formatting.py        # summarize_for_bubble（吹き出し用テキスト要約）
+│       │   └── ports/               # ポート定義（抽象インターフェース）
+│       │       ├── agent_port.py    # AgentPort ABC, BubbleCallback型
+│       │       └── claude_port.py   # ClaudeRunnerPort ABC
 │       │
 │       ├── agent/                    # アプリケーション層（エージェントロジック）
-│       │   ├── base.py              # BaseAgent: ソケットサーバーループ + on_bubble callback
-│       │   ├── worker.py            # YadonWorker(BaseAgent): claude haiku実行
-│       │   └── manager.py           # YadoranManager(BaseAgent): 3フェーズ分解 + 並列dispatch + 集約
+│       │   ├── base.py              # BaseAgent(AgentPort): ソケットサーバーループ + on_bubble callback
+│       │   ├── worker.py            # YadonWorker(BaseAgent): claude haiku実行（ClaudeRunnerPort DI）
+│       │   └── manager.py           # YadoranManager(BaseAgent): 3フェーズ分解 + 並列dispatch + 集約（ClaudeRunnerPort DI）
 │       │
 │       ├── infra/                    # インフラ層（I/Oアダプター）
 │       │   ├── protocol.py          # Unixソケット通信（JSON over Unix socket, SHUT_WR EOF）
-│       │   └── claude_runner.py     # subprocess.run("claude -p") ラッパー
+│       │   └── claude_runner.py     # SubprocessClaudeRunner(ClaudeRunnerPort): claude -p 実行
 │       │
 │       ├── config/                   # 設定
 │       │   ├── agent.py             # メッセージ定数、バリアント、やるきスイッチ、get_yadon_count()
@@ -81,9 +85,16 @@ yadon-agents/
 │           ├── pokemon_menu.py      # 右クリックメニュー
 │           ├── pixel_data.py        # ヤドン ドット絵
 │           ├── yadoran_pixel_data.py # ヤドラン ドット絵
-│           ├── macos.py             # macOS window elevation (NSWindow)
-│           └── utils.py             # log_debug
+│           └── macos.py             # macOS window elevation (NSWindow)
 │
+├── tests/                            # テスト（pytest）
+│   ├── domain/
+│   │   ├── test_formatting.py       # summarize_for_bubble テスト
+│   │   └── test_messages.py         # メッセージ型テスト
+│   ├── infra/
+│   │   └── test_protocol.py         # Unixソケット通信テスト
+│   └── agent/
+│       └── test_base.py             # BaseAgent テスト
 ├── scripts/
 │   ├── send_task.sh                 # ヤドキング → ヤドランへタスク送信
 │   ├── check_status.sh              # エージェントのステータス照会
@@ -105,6 +116,15 @@ yadon-agents/
 
 ## 設計判断
 
+### Port & Adapter（DI）
+
+`domain/ports/` に抽象インターフェースを定義し、コンストラクタ注入で具体実装を差し替え可能にする。
+
+- `AgentPort` — エージェントの公開インターフェース。`BaseAgent` が実装
+- `ClaudeRunnerPort` — Claude CLI実行の抽象。`SubprocessClaudeRunner` が実装
+
+`YadonWorker` / `YadoranManager` は `claude_runner: ClaudeRunnerPort | None = None` を受け取り、未指定時は `SubprocessClaudeRunner()` をデフォルト生成する。テスト時にはモックを注入可能。
+
 ### BaseAgent + on_bubble callback
 
 daemon版とGUI版の唯一の違いは「吹き出し通知の方法」。
@@ -112,17 +132,18 @@ daemon版とGUI版の唯一の違いは「吹き出し通知の方法」。
 - daemon版: on_bubble = None（何もしない）
 - GUI版: on_bubble → pyqtSignal emit
 
-`agent/base.py` の `on_bubble: Optional[BubbleCallback]` で吸収し、エージェントロジックは1箇所に集約。
+`BaseAgent(AgentPort)` の `on_bubble: BubbleCallback | None` で吸収し、エージェントロジックは1箇所に集約。
 
 ### AgentThread
 
-`gui/agent_thread.py`（25行）で BaseAgent を QThread でラップ。
+`gui/agent_thread.py` で `AgentPort` を QThread でラップ。
 `bubble_request` シグナルが BasePet の `show_bubble` スロットに接続される。
 
-### BasePet
+### BasePet + Composition Root
 
 `gui/base_pet.py` で共通ペットロジック（ドラッグ、アニメーション、描画、メニュー、吹き出し）を集約。
-YadonPet はやるきスイッチ等を追加、YadoranPet は最小限のサブクラス。
+YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_path` を受け取る（DI）。
+具体的な依存の組み立ては各ペットの `main()` 関数（Composition Root）で行う。
 
 ## 通信プロトコル
 
@@ -255,12 +276,12 @@ check_status.sh yadon-1      # ヤドン1のみ
 ```
 
 ### restart_daemons.sh
-ヤドキング実行中にデーモン（ヤドラン + ヤドン1〜4）のみを再起動するスクリプト。
+ヤドキング実行中にデーモン（ヤドラン + ヤドン1〜N）のみを再起動するスクリプト。
 stop.sh → デーモン再起動の順で実行。ヤドキングは再起動不要。
 
 ### pet_say.sh
 ペットに吹き出しメッセージを送信するヘルパー。ペットソケット (`/tmp/yadon-pet-N.sock`) 経由。
-ヤドン1〜4に対応（番号指定）。ペット未起動時は静かに終了。
+ヤドン1〜Nに対応（番号指定）。ペット未起動時は静かに終了。
 
 ```bash
 pet_say.sh <yadon_number> <message> [bubble_type] [duration_ms]
