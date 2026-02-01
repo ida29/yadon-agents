@@ -156,14 +156,7 @@ def cmd_start(work_dir: str) -> None:
         print()
         print(f"\033[1;33m!\033[0m {theme.role_names.manager}のソケットが作成されませんでした")
 
-    # --- ウェルカムメッセージ ---
-    for pet in pets:
-        if isinstance(pet, YadoranPet):
-            pet.show_bubble(random.choice(theme.manager_welcome_messages), 'normal')
-        else:
-            pet.show_bubble(random.choice(theme.welcome_messages), 'normal')
-
-    # --- コーディネーター起動 ---
+    # --- コーディネーター起動準備 ---
     print()
     print(f"\033[0;32mOK\033[0m {theme.role_names.manager}+{theme.role_names.worker}起動完了")
     print()
@@ -220,6 +213,16 @@ def cmd_start(work_dir: str) -> None:
         QApplication.quit()
 
     signal.signal(signal.SIGTERM, _sigterm_handler)
+
+    # --- ウェルカムメッセージ（イベントループ開始後に表示） ---
+    def _show_welcome():
+        for pet in pets:
+            if isinstance(pet, YadoranPet):
+                pet.show_bubble(random.choice(theme.manager_welcome_messages), 'normal')
+            else:
+                pet.show_bubble(random.choice(theme.welcome_messages), 'normal')
+
+    QTimer.singleShot(0, _show_welcome)
 
     # --- Qtイベントループ（ブロック） ---
     try:
