@@ -18,26 +18,39 @@ from yadon_agents.config.agent import (
     SOCKET_SEND_TIMEOUT,
 )
 
+__all__ = [
+    "SOCKET_DIR",
+    "agent_socket_path",
+    "pet_socket_path",
+    "create_server_socket",
+    "send_message",
+    "receive_message",
+    "send_response",
+    "cleanup_socket",
+]
+
 # ソケットパス
 SOCKET_DIR = "/tmp"
 
 
-def agent_socket_path(name: str) -> str:
+def agent_socket_path(name: str, prefix: str = "yadon") -> str:
     """エージェントのソケットパスを返す。
 
     Args:
-        name: "yadoran", "yadon-1", "yadon-2", "yadon-3", "yadon-4"
+        name: "yadoran", "yadon-1", "yadon-2", etc.
+        prefix: ソケットファイル名のプレフィックス (デフォルト "yadon")
     """
-    return f"{SOCKET_DIR}/yadon-agent-{name}.sock"
+    return f"{SOCKET_DIR}/{prefix}-agent-{name}.sock"
 
 
-def pet_socket_path(name: str) -> str:
+def pet_socket_path(name: str, prefix: str = "yadon") -> str:
     """ペットの吹き出しソケットパスを返す。
 
     Args:
         name: "yadoran", "1", "2", "3", "4"
+        prefix: ソケットファイル名のプレフィックス (デフォルト "yadon")
     """
-    return f"{SOCKET_DIR}/yadon-pet-{name}.sock"
+    return f"{SOCKET_DIR}/{prefix}-pet-{name}.sock"
 
 
 # --- ソケット操作 ---
@@ -48,8 +61,12 @@ def create_server_socket(sock_path: str) -> socket.socket:
     Path(sock_path).unlink(missing_ok=True)
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.bind(sock_path)
-    sock.listen(SOCKET_LISTEN_BACKLOG)
+    try:
+        sock.bind(sock_path)
+        sock.listen(SOCKET_LISTEN_BACKLOG)
+    except Exception:
+        sock.close()
+        raise
     return sock
 
 

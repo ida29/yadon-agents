@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""ヤドラン デスクトップペット
+"""マネージャー デスクトップペット
 
-BasePet を継承。ヤドン版より単純（やるきスイッチなし）。
+BasePet を継承。ワーカー版より単純（やるきスイッチなし）。
 """
 
 from __future__ import annotations
@@ -16,41 +16,43 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QCursor
 
-from yadon_agents import PROJECT_ROOT
-from yadon_agents.config.agent import YADORAN_MESSAGES, YADORAN_WELCOME_MESSAGES, get_yadon_count
 from yadon_agents.config.ui import WINDOW_WIDTH, WINDOW_HEIGHT
 from yadon_agents.gui.base_pet import BasePet
 from yadon_agents.gui.agent_thread import AgentThread
 from yadon_agents.gui.yadoran_pixel_data import build_yadoran_pixel_data
-from yadon_agents.agent.manager import YadoranManager
-from yadon_agents.infra.protocol import pet_socket_path
+from yadon_agents.themes import get_theme
 
 logger = logging.getLogger(__name__)
 
 
 class YadoranPet(BasePet):
-    """ヤドラン デスクトップペット。"""
+    """マネージャー デスクトップペット。"""
 
-    def __init__(self):
+    def __init__(self, agent_thread: AgentThread, pet_sock_path: str):
+        theme = get_theme()
         super().__init__(
-            label_text="ヤドラン",
+            label_text=theme.role_names.manager,
             pixel_data=build_yadoran_pixel_data(),
-            messages=YADORAN_MESSAGES,
+            messages=theme.manager_messages,
         )
 
-        # Start agent + pet socket servers
-        manager = YadoranManager(str(PROJECT_ROOT))
-        agent_thread = AgentThread(manager)
-        self.start_servers(pet_socket_path("yadoran"), agent_thread)
+        self.start_servers(pet_sock_path, agent_thread)
 
 
 def _signal_handler(signum, frame):
     QApplication.quit()
-    sys.exit(0)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='ヤドラン デスクトップペット')
+    # --- Composition Root: 具体的な依存の組み立て ---
+    from yadon_agents import PROJECT_ROOT
+    from yadon_agents.agent.manager import YadoranManager
+    from yadon_agents.config.agent import get_yadon_count
+    from yadon_agents.infra.protocol import pet_socket_path
+
+    theme = get_theme()
+
+    parser = argparse.ArgumentParser(description=f'{theme.role_names.manager} デスクトップペット')
     parser.parse_args()
 
     signal.signal(signal.SIGINT, _signal_handler)
@@ -65,7 +67,14 @@ def main() -> None:
     screen_obj = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
     screen = screen_obj.geometry()
 
-    pet = YadoranPet()
+    # 具体的なエージェント構築（composition root）
+    manager = YadoranManager(str(PROJECT_ROOT))
+    agent_thread = AgentThread(manager)
+
+    pet = YadoranPet(
+        agent_thread=agent_thread,
+        pet_sock_path=pet_socket_path(theme.agent_role_manager, prefix=theme.socket_prefix),
+    )
 
     margin = 20
     spacing = 10
@@ -73,8 +82,8 @@ def main() -> None:
     y_pos = screen.height() - margin - WINDOW_HEIGHT
     pet.move(x_pos, y_pos)
 
-    logger.debug("Started ヤドラン pos=(%d,%d)", x_pos, y_pos)
-    pet.show_bubble(random.choice(YADORAN_WELCOME_MESSAGES), 'normal')
+    logger.debug("Started %s pos=(%d,%d)", theme.role_names.manager, x_pos, y_pos)
+    pet.show_bubble(random.choice(theme.manager_welcome_messages), 'normal')
 
     try:
         sys.exit(app.exec())

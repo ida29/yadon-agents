@@ -1,4 +1,8 @@
-"""エージェント設定（メッセージ、モデル名、タイムアウト等）"""
+"""エージェント設定（タイムアウト、ソケット、出力制限等）
+
+テーマ固有データ（メッセージ、バリアント、フェーズラベル等）は
+themes/ に移動済み。後方互換のため get_theme() 経由のラッパーを維持。
+"""
 
 from __future__ import annotations
 
@@ -27,95 +31,101 @@ SOCKET_WAIT_INTERVAL = 0.5
 
 # --- 出力制限 ---
 SUMMARY_MAX_LENGTH = 200
+BUBBLE_TASK_MAX_LENGTH = 80
+BUBBLE_RESULT_MAX_LENGTH = 60
 
-# --- メッセージ ---
 
-RANDOM_MESSAGES = [
-    "おつかれさま　やぁん",
-    "きょうは　なんようび　やぁん......?",
-    "うどん　たべる　やぁん......?",
-]
+# --- 後方互換ラッパー (get_theme() 経由) ---
 
-WELCOME_MESSAGES = [
-    "おてつだい　する　やぁん",
-    "がんばる　やぁん",
-    "よろしく　やぁん",
-    "なにか　つくる　やぁん",
-    "きょうも　がんばる　やぁん",
-]
 
-YARUKI_SWITCH_ON_MESSAGE = "やるきスイッチ　ON"
-YARUKI_SWITCH_OFF_MESSAGE = "やるきスイッチ　OFF"
-YARUKI_MENU_ON_TEXT = "やるきスイッチ　ONにする"
-YARUKI_MENU_OFF_TEXT = "やるきスイッチ　OFFにする"
-
-YADON_MESSAGES = {
-    1: ["...やるやぁん...", "...できたやぁん...", "...ん?...やぁん?"],
-    2: ["...やるやぁん...", "...つかれたやぁん...", "...しっぽで釣りしたい..."],
-    3: ["...やるやぁん...", "...がんばるやぁん...", "...ヤド..."],
-    4: ["あー やるよお~", "あー できたあ~", "あー でもでも~"],
-}
-
-YADORAN_MESSAGES = [
-    "...ヤドキングがなんか言ってる...",
-    "...タスク分解...する...",
-    "...ヤドンたちに...おねがい...",
-    "...しっぽの...シェルダーが...かゆい...",
-    "...管理って...たいへん...",
-]
-
-YADORAN_WELCOME_MESSAGES = [
-    "...ヤドラン...起動した...",
-    "...タスク管理...する...",
-    "...しっぽが...準備できた...",
-]
-
-PHASE_LABELS = {
-    "implement": "...実装する...",
-    "docs": "...ドキュメント更新する...",
-    "review": "...レビューする...",
-}
-
-YADON_VARIANTS = {
-    1: "normal",
-    2: "shiny",
-    3: "galarian",
-    4: "galarian_shiny",
-}
-
-YARUKI_SWITCH_MODE = False
-
-# --- 動的ヤドン数 ---
-
-_YADON_COUNT_DEFAULT = 4
-_YADON_COUNT_MIN = 1
-_YADON_COUNT_MAX = 8
-
-_EXTRA_VARIANTS = ["normal", "shiny", "galarian", "galarian_shiny"]
+def _theme():
+    from yadon_agents.themes import get_theme
+    return get_theme()
 
 
 def get_yadon_count() -> int:
-    """環境変数 YADON_COUNT からヤドン数を取得する（デフォルト4、範囲1-8）。"""
+    """環境変数 YADON_COUNT からワーカー数を取得する。"""
+    wc = _theme().worker_count
     raw = os.environ.get("YADON_COUNT", "")
     if not raw:
-        return _YADON_COUNT_DEFAULT
+        return wc.default
     try:
         n = int(raw)
     except ValueError:
-        return _YADON_COUNT_DEFAULT
-    return max(_YADON_COUNT_MIN, min(n, _YADON_COUNT_MAX))
+        return wc.default
+    return max(wc.min, min(n, wc.max))
 
 
 def get_yadon_messages(n: int) -> list[str]:
-    """ヤドンnのメッセージリストを返す。5以上はYADON_MESSAGES[1-4]からフォールバック。"""
-    if n in YADON_MESSAGES:
-        return YADON_MESSAGES[n]
-    base = ((n - 1) % 4) + 1
-    return YADON_MESSAGES[base]
+    """ワーカーnのメッセージリストを返す。"""
+    t = _theme()
+    if n in t.worker_messages:
+        return t.worker_messages[n]
+    base_count = len(t.worker_messages)
+    if base_count == 0:
+        return []
+    base = ((n - 1) % base_count) + 1
+    return t.worker_messages.get(base, [])
 
 
 def get_yadon_variant(n: int) -> str:
-    """ヤドンnのバリアントを返す。5以上はローテーション。"""
-    if n in YADON_VARIANTS:
-        return YADON_VARIANTS[n]
-    return _EXTRA_VARIANTS[(n - 1) % len(_EXTRA_VARIANTS)]
+    """ワーカーnのバリアントを返す。"""
+    t = _theme()
+    if n in t.worker_variants:
+        return t.worker_variants[n]
+    if not t.extra_variants:
+        return "normal"
+    return t.extra_variants[(n - 1) % len(t.extra_variants)]
+
+
+# --- 後方互換プロパティ ---
+# 既存コードが直接参照している定数。get_theme() 経由で動的に取得する。
+
+
+class _ThemeProxy:
+    """テーマデータへの後方互換アクセスを提供するプロキシ。
+
+    モジュールレベル定数として使えるようにするため、__getattr__ ではなく
+    明示的なプロパティで提供する。
+    """
+
+    def __getattr__(self, name: str) -> object:
+        t = _theme()
+        mapping = {
+            "RANDOM_MESSAGES": t.random_messages,
+            "WELCOME_MESSAGES": t.welcome_messages,
+            "YARUKI_SWITCH_ON_MESSAGE": t.yaruki_switch.on_message,
+            "YARUKI_SWITCH_OFF_MESSAGE": t.yaruki_switch.off_message,
+            "YARUKI_MENU_ON_TEXT": t.yaruki_switch.menu_on_text,
+            "YARUKI_MENU_OFF_TEXT": t.yaruki_switch.menu_off_text,
+            "YADON_MESSAGES": t.worker_messages,
+            "YADORAN_MESSAGES": t.manager_messages,
+            "YADORAN_WELCOME_MESSAGES": t.manager_welcome_messages,
+            "PHASE_LABELS": t.phase_labels,
+            "YADON_VARIANTS": t.worker_variants,
+            "YARUKI_SWITCH_MODE": t.yaruki_switch.enabled,
+        }
+        if name in mapping:
+            return mapping[name]
+        raise AttributeError(f"module 'yadon_agents.config.agent' has no attribute {name!r}")
+
+
+_proxy = _ThemeProxy()
+
+# 後方互換: 既存importは引き続き動作する
+RANDOM_MESSAGES: list[str]
+WELCOME_MESSAGES: list[str]
+YARUKI_SWITCH_ON_MESSAGE: str
+YARUKI_SWITCH_OFF_MESSAGE: str
+YARUKI_MENU_ON_TEXT: str
+YARUKI_MENU_OFF_TEXT: str
+YADON_MESSAGES: dict[int, list[str]]
+YADORAN_MESSAGES: list[str]
+YADORAN_WELCOME_MESSAGES: list[str]
+PHASE_LABELS: dict[str, str]
+YADON_VARIANTS: dict[int, str]
+YARUKI_SWITCH_MODE: bool
+
+
+def __getattr__(name: str) -> object:
+    return getattr(_proxy, name)

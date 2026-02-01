@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""ヤドン デスクトップペット
+"""ワーカー デスクトップペット
 
-BasePet を継承し、やるきスイッチとヤドン固有メッセージを追加。
+BasePet を継承し、やるきスイッチとワーカー固有メッセージを追加。
 """
 
 from __future__ import annotations
@@ -16,14 +16,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QCursor
 
-from yadon_agents import PROJECT_ROOT
-from yadon_agents.config.agent import (
-    RANDOM_MESSAGES, WELCOME_MESSAGES,
-    YARUKI_SWITCH_MODE,
-    YARUKI_SWITCH_ON_MESSAGE, YARUKI_SWITCH_OFF_MESSAGE,
-    YARUKI_MENU_ON_TEXT, YARUKI_MENU_OFF_TEXT,
-    get_yadon_count, get_yadon_messages, get_yadon_variant,
-)
+from yadon_agents.config.agent import get_yadon_messages
 from yadon_agents.config.ui import (
     WINDOW_WIDTH, WINDOW_HEIGHT,
     FACE_ANIMATION_INTERVAL, FACE_ANIMATION_INTERVAL_FAST,
@@ -32,46 +25,53 @@ from yadon_agents.gui.base_pet import BasePet
 from yadon_agents.gui.agent_thread import AgentThread
 from yadon_agents.gui.pixel_data import build_pixel_data
 from yadon_agents.gui.pokemon_menu import PokemonMenu
-from yadon_agents.agent.worker import YadonWorker
-from yadon_agents.infra.protocol import pet_socket_path
+from yadon_agents.themes import get_theme
 
 logger = logging.getLogger(__name__)
 
 
 class YadonPet(BasePet):
-    """ヤドン デスクトップペット。やるきスイッチ付き。"""
+    """ワーカー デスクトップペット。やるきスイッチ付き（テーマで制御）。"""
 
-    def __init__(self, yadon_number: int, variant: str = 'normal'):
+    def __init__(
+        self,
+        yadon_number: int,
+        agent_thread: AgentThread,
+        pet_sock_path: str,
+        variant: str = 'normal',
+    ):
         self.yadon_number = yadon_number
         self.variant = variant
-        self.yaruki_switch_mode = bool(YARUKI_SWITCH_MODE)
+        theme = get_theme()
+        self._theme = theme
+        self.yaruki_switch_mode = theme.yaruki_switch.enabled
 
-        messages = get_yadon_messages(yadon_number) + RANDOM_MESSAGES
+        messages = get_yadon_messages(yadon_number) + theme.random_messages
 
         super().__init__(
-            label_text=f"ヤドン{yadon_number}",
+            label_text=f"{theme.role_names.worker}{yadon_number}",
             pixel_data=build_pixel_data(variant),
             messages=messages,
         )
 
-        # Start agent + pet socket servers
-        worker = YadonWorker(yadon_number, str(PROJECT_ROOT))
-        agent_thread = AgentThread(worker)
-        self.start_servers(pet_socket_path(str(yadon_number)), agent_thread)
+        self.start_servers(pet_sock_path, agent_thread)
 
     def _build_menu_items(self, menu: PokemonMenu) -> None:
-        toggle_text = YARUKI_MENU_OFF_TEXT if self.yaruki_switch_mode else YARUKI_MENU_ON_TEXT
-        menu.add_item(toggle_text, 'toggle_yaruki')
+        yaruki = self._theme.yaruki_switch
+        if yaruki.menu_on_text and yaruki.menu_off_text:
+            toggle_text = yaruki.menu_off_text if self.yaruki_switch_mode else yaruki.menu_on_text
+            menu.add_item(toggle_text, 'toggle_yaruki')
         menu.add_item('とじる', 'close')
 
     def _handle_menu_action(self, action_id: str) -> None:
         if action_id == 'toggle_yaruki':
+            yaruki = self._theme.yaruki_switch
             self.yaruki_switch_mode = not self.yaruki_switch_mode
             if self.yaruki_switch_mode:
-                message = YARUKI_SWITCH_ON_MESSAGE
+                message = yaruki.on_message
                 bubble_type = 'claude'
             else:
-                message = YARUKI_SWITCH_OFF_MESSAGE
+                message = yaruki.off_message
                 bubble_type = 'normal'
             self._update_animation_speed()
             self.show_bubble(message, bubble_type, display_time=3000)
@@ -86,12 +86,19 @@ class YadonPet(BasePet):
 
 def _signal_handler(signum, frame):
     QApplication.quit()
-    sys.exit(0)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='ヤドン デスクトップペット')
-    parser.add_argument('--number', type=int, required=True, help='ヤドン番号 (1-N)')
+    # --- Composition Root: 具体的な依存の組み立て ---
+    from yadon_agents import PROJECT_ROOT
+    from yadon_agents.agent.worker import YadonWorker
+    from yadon_agents.config.agent import get_yadon_variant
+    from yadon_agents.infra.protocol import pet_socket_path
+
+    theme = get_theme()
+
+    parser = argparse.ArgumentParser(description=f'{theme.role_names.worker} デスクトップペット')
+    parser.add_argument('--number', type=int, required=True, help=f'{theme.role_names.worker}番号 (1-N)')
     parser.add_argument('--variant', default=None, help='カラーバリアント')
     args = parser.parse_args()
 
@@ -109,7 +116,16 @@ def main() -> None:
     screen_obj = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
     screen = screen_obj.geometry()
 
-    pet = YadonPet(yadon_number=args.number, variant=variant)
+    # 具体的なエージェント構築（composition root）
+    worker = YadonWorker(args.number, str(PROJECT_ROOT))
+    agent_thread = AgentThread(worker)
+
+    pet = YadonPet(
+        yadon_number=args.number,
+        agent_thread=agent_thread,
+        pet_sock_path=pet_socket_path(str(args.number), prefix=theme.socket_prefix),
+        variant=variant,
+    )
 
     margin = 20
     spacing = 10
@@ -117,8 +133,8 @@ def main() -> None:
     y_pos = screen.height() - margin - WINDOW_HEIGHT
     pet.move(x_pos, y_pos)
 
-    logger.debug("Started ヤドン%d variant=%s pos=(%d,%d)", args.number, variant, x_pos, y_pos)
-    pet.show_bubble(random.choice(WELCOME_MESSAGES), 'normal')
+    logger.debug("Started %s%d variant=%s pos=(%d,%d)", theme.role_names.worker, args.number, variant, x_pos, y_pos)
+    pet.show_bubble(random.choice(theme.welcome_messages), 'normal')
 
     try:
         sys.exit(app.exec())

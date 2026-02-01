@@ -13,11 +13,14 @@ set -euo pipefail
 #   ./scripts/check_status.sh yadon-1   # ヤドン1のみ
 
 YADON_COUNT="${YADON_COUNT:-4}"
+SOCKET_PREFIX="${YADON_SOCKET_PREFIX:-yadon}"
+MANAGER_ROLE="${YADON_MANAGER_ROLE:-yadoran}"
+WORKER_ROLE="${YADON_WORKER_ROLE:-yadon}"
 TARGET="${1:-all}"
 
 query_agent() {
     local name="$1"
-    local sock="/tmp/yadon-agent-${name}.sock"
+    local sock="/tmp/${SOCKET_PREFIX}-agent-${name}.sock"
 
     if [ ! -S "$sock" ]; then
         echo "  ${name}: 停止中 (ソケットなし)"
@@ -65,13 +68,13 @@ finally:
     echo "  ${name}: ${RESPONSE}"
 }
 
-echo "=== ヤドン・エージェント ステータス ==="
+echo "=== エージェント ステータス ==="
 echo ""
 
 if [ "$TARGET" = "all" ]; then
-    query_agent "yadoran"
+    query_agent "$MANAGER_ROLE"
     for i in $(seq 1 "$YADON_COUNT"); do
-        query_agent "yadon-${i}"
+        query_agent "${WORKER_ROLE}-${i}"
     done
 else
     query_agent "$TARGET"

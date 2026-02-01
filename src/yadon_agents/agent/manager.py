@@ -1,4 +1,4 @@
-"""YadoranManager — ヤドランタスク管理エージェント"""
+"""YadoranManager — マネージャーエージェント"""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import argparse
 import json
 import logging
 import signal
-import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -14,8 +13,9 @@ from typing import Any
 from yadon_agents import PROJECT_ROOT
 from yadon_agents.agent.base import BaseAgent
 from yadon_agents.config.agent import (
+    BUBBLE_RESULT_MAX_LENGTH,
+    BUBBLE_TASK_MAX_LENGTH,
     CLAUDE_DECOMPOSE_TIMEOUT,
-    PHASE_LABELS,
     SOCKET_DISPATCH_TIMEOUT,
     SOCKET_STATUS_TIMEOUT,
     get_yadon_count,
@@ -27,31 +27,98 @@ from yadon_agents.domain.messages import (
     StatusResponse,
     TaskMessage,
 )
+from yadon_agents.domain.ports.claude_port import ClaudeRunnerPort
+from yadon_agents.domain.task_types import Phase, Subtask
 from yadon_agents.infra import protocol as proto
-from yadon_agents.infra.claude_runner import run_claude
+from yadon_agents.infra.claude_runner import SubprocessClaudeRunner
+from yadon_agents.themes import get_theme
+
+__all__ = ["YadoranManager"]
 
 logger = logging.getLogger(__name__)
 
 
-class YadoranManager(BaseAgent):
-    """ヤドラン。タスクを分解してヤドンに並列配分する。"""
+def _extract_json(output: str) -> dict[str, Any]:
+    """Claude出力からJSONブロックを抽出してパースする。
 
-    def __init__(self, project_dir: str | None = None):
+    ``````json ... `````` フェンスがあればその中身を、なければ出力全体をパースする。
+
+    Raises:
+        json.JSONDecodeError: JSONパースに失敗した場合
+    """
+    json_str = output.strip()
+    if "```json" in json_str:
+        try:
+            start = json_str.index("```json") + 7
+            end = json_str.index("```", start)
+            json_str = json_str[start:end].strip()
+        except ValueError:
+            # フェンスが閉じていない場合は出力全体をパース試行
+            json_str = output.strip()
+    elif "```" in json_str:
+        try:
+            start = json_str.index("```") + 3
+            end = json_str.index("```", start)
+            json_str = json_str[start:end].strip()
+        except ValueError:
+            # フェンスが閉じていない場合は出力全体をパース試行
+            json_str = output.strip()
+    return json.loads(json_str)
+
+
+def _aggregate_results(all_results: list[dict[str, Any]]) -> tuple[str, str, str]:
+    """個別結果リストから (overall_status, combined_summary, combined_output) を集約する。"""
+    all_success = all(r.get("status") == "success" for r in all_results)
+    overall_status = "success" if all_success else "partial_error"
+
+    summaries = []
+    full_output_parts = []
+    for r in all_results:
+        from_agent = r.get("from", "unknown")
+        status = r.get("status", "unknown")
+        r_payload = r.get("payload", {})
+        summary = r_payload.get("summary", "")
+        output = r_payload.get("output", "")
+        summaries.append(f"[{from_agent}] {status}: {summary}")
+        full_output_parts.append(f"=== {from_agent} ({status}) ===\n{output}")
+
+    return overall_status, "\n".join(summaries), "\n\n".join(full_output_parts)
+
+
+class YadoranManager(BaseAgent):
+    """マネージャー。タスクを分解してワーカーに並列配分する。"""
+
+    def __init__(
+        self,
+        project_dir: str | None = None,
+        claude_runner: ClaudeRunnerPort | None = None,
+    ):
         self.yadon_count = get_yadon_count()
-        sock_path = proto.agent_socket_path("yadoran")
+        self.claude_runner = claude_runner or SubprocessClaudeRunner()
+        theme = get_theme()
+        self._theme = theme
+        manager_name = theme.agent_role_manager
+        sock_path = proto.agent_socket_path(manager_name, prefix=theme.socket_prefix)
         if project_dir is None:
             project_dir = str(PROJECT_ROOT)
-        super().__init__(name="yadoran", sock_path=sock_path, project_dir=project_dir)
+        super().__init__(name=manager_name, sock_path=sock_path, project_dir=project_dir)
 
-    def decompose_task(self, instruction: str, project_dir: str) -> list[dict[str, Any]]:
-        """claude -p --model sonnet でタスクを3フェーズに分解する。
+    def _worker_name(self, number: int) -> str:
+        """ワーカーのエージェント名を返す。"""
+        return f"{self._theme.agent_role_worker}-{number}"
 
-        Returns:
-            [{"name": "implement", "subtasks": [...]}, {"name": "docs", ...}, {"name": "review", ...}]
-        """
-        prompt = f"""instructions/yadoran.md を読んで従ってください。
+    def _worker_socket_path(self, name: str) -> str:
+        """ワーカーのソケットパスを返す。"""
+        return proto.agent_socket_path(name, prefix=self._theme.socket_prefix)
 
-あなたはヤドランです。以下のタスクを3フェーズ（implement → docs → review）に分解してください。
+    def decompose_task(self, instruction: str, project_dir: str) -> list[Phase]:
+        """claude -p --model sonnet でタスクを3フェーズに分解する。"""
+        theme = self._theme
+        prefix = theme.manager_prompt_prefix.format(
+            instructions_path=theme.instructions_manager,
+            manager_name=theme.role_names.manager,
+        )
+        prompt = f"""{prefix}以下のタスクを3フェーズ（implement → docs → review）に分解してください。
 
 【タスク】
 {instruction}
@@ -91,26 +158,14 @@ class YadoranManager(BaseAgent):
 - 3フェーズ（implement, docs, review）を毎回必ず含める
 - 各フェーズ内のサブタスクは最大{self.yadon_count}つまで（並列実行される）
 - フェーズ間は逐次実行される（implement完了後にdocs、docs完了後にreview）
-- 各サブタスクには十分な情報を含める（ヤドンは他のサブタスクの内容を知らない）
+- 各サブタスクには十分な情報を含める（{theme.role_names.worker}は他のサブタスクの内容を知らない）
 - docsフェーズでは、実装内容に関連するCLAUDE.md, README.md, 指示書等を更新する
 - reviewフェーズでは、実装とドキュメントの品質・整合性を確認し、問題を指摘する
 """
         try:
-            output, _ = run_claude(prompt=prompt, model="sonnet", cwd=project_dir, timeout=CLAUDE_DECOMPOSE_TIMEOUT)
-            output = output.strip()
-
-            json_str = output
-            if "```json" in output:
-                start = output.index("```json") + 7
-                end = output.index("```", start)
-                json_str = output[start:end].strip()
-            elif "```" in output:
-                start = output.index("```") + 3
-                end = output.index("```", start)
-                json_str = output[start:end].strip()
-
-            data = json.loads(json_str)
-            phases = data.get("phases", [])
+            output, _ = self.claude_runner.run(prompt=prompt, model="sonnet", cwd=project_dir, timeout=CLAUDE_DECOMPOSE_TIMEOUT)
+            data = _extract_json(output)
+            phases: list[Phase] = data.get("phases", [])
             strategy = data.get("strategy", "")
 
             if phases:
@@ -124,17 +179,18 @@ class YadoranManager(BaseAgent):
             logger.warning("タスク分解エラー: %s、そのまま1タスクとして実行", e)
 
         # フォールバック: 旧形式互換（1フェーズ implement のみ）
-        return [{"name": "implement", "subtasks": [{"instruction": instruction}]}]
+        fallback: Phase = {"name": "implement", "subtasks": [{"instruction": instruction}]}
+        return [fallback]
 
     def dispatch_to_yadon(
-        self, yadon_number: int, subtask: dict[str, Any], project_dir: str, sub_task_id: str,
+        self, yadon_number: int, subtask: Subtask, project_dir: str, sub_task_id: str,
     ) -> dict[str, Any]:
-        """1体のヤドンにサブタスクを送信し、結果を受信する。"""
-        yadon_name = f"yadon-{yadon_number}"
-        sock_path = proto.agent_socket_path(yadon_name)
+        """1体のワーカーにサブタスクを送信し、結果を受信する。"""
+        worker_name = self._worker_name(yadon_number)
+        sock_path = self._worker_socket_path(worker_name)
 
         msg = TaskMessage(
-            from_agent="yadoran",
+            from_agent=self.name,
             instruction=subtask["instruction"],
             project_dir=project_dir,
             task_id=sub_task_id,
@@ -143,19 +199,19 @@ class YadoranManager(BaseAgent):
         try:
             return proto.send_message(sock_path, msg, timeout=SOCKET_DISPATCH_TIMEOUT)
         except Exception as e:
-            logger.error("%s への送信失敗: %s", yadon_name, e)
+            logger.error("%s への送信失敗: %s", worker_name, e)
             return ResultMessage(
                 task_id=sub_task_id,
-                from_agent=yadon_name,
+                from_agent=worker_name,
                 status="error",
                 output=f"送信失敗: {e}",
-                summary=f"ヤドン{yadon_number}への送信に失敗",
+                summary=f"{self._theme.role_names.worker}{yadon_number}への送信に失敗",
             ).to_dict()
 
     def _dispatch_phase(
-        self, phase: dict[str, Any], project_dir: str, task_id: str, phase_index: int,
+        self, phase: Phase, project_dir: str, task_id: str, phase_index: int,
     ) -> list[dict[str, Any]]:
-        """1フェーズ内のサブタスクをヤドンに並列配分して結果を収集する。"""
+        """1フェーズ内のサブタスクをワーカーに並列配分して結果を収集する。"""
         subtasks = phase.get("subtasks", [])
         phase_name = phase.get("name", f"phase{phase_index}")
 
@@ -176,10 +232,11 @@ class YadoranManager(BaseAgent):
                     result = future.result()
                     results.append(result)
                 except Exception as e:
-                    logger.error("ヤドン%d 実行エラー (%s): %s", yadon_num, phase_name, e)
+                    worker_name = self._worker_name(yadon_num)
+                    logger.error("%s 実行エラー (%s): %s", worker_name, phase_name, e)
                     results.append(ResultMessage(
                         task_id="unknown",
-                        from_agent=f"yadon-{yadon_num}",
+                        from_agent=worker_name,
                         status="error",
                         output=str(e),
                         summary="実行エラー",
@@ -194,8 +251,11 @@ class YadoranManager(BaseAgent):
         instruction = payload.get("instruction", "")
         project_dir = payload.get("project_dir", self.project_dir)
 
+        theme = self._theme
+
         logger.info("タスク受信: %s — %s", task_id, instruction[:80])
-        self.bubble(f"...ヤドキングがなんか言ってる... ({summarize_for_bubble(instruction, 20)})", "claude")
+        task_summary = summarize_for_bubble(instruction, BUBBLE_TASK_MAX_LENGTH)
+        self.bubble(theme.manager_task_bubble.format(summary=task_summary), "claude")
 
         phases = self.decompose_task(instruction, project_dir)
 
@@ -203,9 +263,15 @@ class YadoranManager(BaseAgent):
         for i, phase in enumerate(phases):
             phase_name = phase.get("name", f"phase{i}")
             subtask_count = len(phase.get("subtasks", []))
-            label = PHASE_LABELS.get(phase_name, f"...{phase_name}...")
+            label = theme.phase_labels.get(phase_name, f"...{phase_name}...")
+            yadon_count = min(subtask_count, self.yadon_count)
             self.bubble(
-                f"{label}（{subtask_count}タスク）", "claude", 3000,
+                theme.manager_phase_bubble.format(
+                    label=label,
+                    worker_name=theme.role_names.worker,
+                    count=yadon_count,
+                ),
+                "claude", 3000,
             )
             logger.info("フェーズ開始: %s (%d タスク)", phase_name, subtask_count)
 
@@ -216,33 +282,19 @@ class YadoranManager(BaseAgent):
             if not phase_success:
                 logger.warning("フェーズ %s で一部失敗", phase_name)
 
-        all_success = all(r.get("status") == "success" for r in all_results)
-        overall_status = "success" if all_success else "partial_error"
+        overall_status, combined_summary, combined_output = _aggregate_results(all_results)
 
-        summaries = []
-        full_output_parts = []
-        for r in all_results:
-            from_agent = r.get("from", "unknown")
-            status = r.get("status", "unknown")
-            r_payload = r.get("payload", {})
-            summary = r_payload.get("summary", "")
-            output = r_payload.get("output", "")
-            summaries.append(f"[{from_agent}] {status}: {summary}")
-            full_output_parts.append(f"=== {from_agent} ({status}) ===\n{output}")
-
-        combined_summary = "\n".join(summaries)
-        combined_output = "\n\n".join(full_output_parts)
-
+        result_summary = summarize_for_bubble(combined_summary, BUBBLE_RESULT_MAX_LENGTH)
         if overall_status == "success":
-            self.bubble("...みんなできた...", "claude")
+            self.bubble(theme.manager_success_bubble.format(summary=result_summary), "claude")
         else:
-            self.bubble("...一部失敗した...", "claude")
+            self.bubble(theme.manager_error_bubble.format(summary=result_summary), "claude")
 
         self.current_task_id = None
 
         return ResultMessage(
             task_id=task_id,
-            from_agent="yadoran",
+            from_agent=self.name,
             status=overall_status,
             output=combined_output,
             summary=combined_summary,
@@ -251,20 +303,20 @@ class YadoranManager(BaseAgent):
     def handle_status(self, msg: dict[str, Any]) -> dict[str, Any]:
         workers: dict[str, str] = {}
         for i in range(1, self.yadon_count + 1):
-            yadon_name = f"yadon-{i}"
-            sock_path = proto.agent_socket_path(yadon_name)
+            worker_name = self._worker_name(i)
+            sock_path = self._worker_socket_path(worker_name)
             if Path(sock_path).exists():
                 try:
                     resp = proto.send_message(
                         sock_path,
-                        StatusQuery(from_agent="yadoran").to_dict(),
+                        StatusQuery(from_agent=self.name).to_dict(),
                         timeout=SOCKET_STATUS_TIMEOUT,
                     )
-                    workers[yadon_name] = resp.get("state", "unknown")
+                    workers[worker_name] = resp.get("state", "unknown")
                 except Exception:
-                    workers[yadon_name] = "unreachable"
+                    workers[worker_name] = "unreachable"
             else:
-                workers[yadon_name] = "stopped"
+                workers[worker_name] = "stopped"
 
         state = "busy" if self.current_task_id else "idle"
         return StatusResponse(
@@ -276,21 +328,21 @@ class YadoranManager(BaseAgent):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="ヤドランマネージャー")
+    theme = get_theme()
+
+    parser = argparse.ArgumentParser(description=f"{theme.role_names.manager}マネージャー")
     parser.parse_args()
 
     logging.basicConfig(
         level=logging.INFO,
-        format="[yadoran] %(asctime)s %(message)s",
+        format=f"[{theme.agent_role_manager}] %(asctime)s %(message)s",
         datefmt="%H:%M:%S",
     )
 
     manager = YadoranManager()
 
     def signal_handler(signum, frame):
-        logger.info("シグナル受信、停止中...")
         manager.stop()
-        sys.exit(0)
 
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)

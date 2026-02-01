@@ -25,11 +25,14 @@ if [ -z "$PROJECT_DIR" ]; then
     PROJECT_DIR="$(pwd)"
 fi
 
-SOCKET="/tmp/yadon-agent-yadoran.sock"
+# テーマ対応ソケットパス（YADON_SOCKET_PREFIX, YADON_MANAGER_ROLE で構築）
+SOCKET_PREFIX="${YADON_SOCKET_PREFIX:-yadon}"
+MANAGER_ROLE="${YADON_MANAGER_ROLE:-yadoran}"
+SOCKET="/tmp/${SOCKET_PREFIX}-agent-${MANAGER_ROLE}.sock"
 
 # ソケット存在チェック
 if [ ! -S "$SOCKET" ]; then
-    echo "エラー: ヤドランデーモンが起動していません ($SOCKET が見つかりません)" >&2
+    echo "エラー: マネージャーデーモンが起動していません ($SOCKET が見つかりません)" >&2
     exit 1
 fi
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""yadon CLI — マルチエージェント起動/停止
+"""yadon CLI -- マルチエージェント起動/停止
 
 使用法:
-    yadon start [work_dir]  — 全エージェント起動
-    yadon stop              — 全エージェント停止
+    yadon start [work_dir]  -- 全エージェント起動
+    yadon stop              -- 全エージェント停止
 """
 
 from __future__ import annotations
@@ -18,24 +18,17 @@ from pathlib import Path
 
 from yadon_agents import PROJECT_ROOT
 from yadon_agents.config.agent import (
-    PROCESS_STOP_INTERVAL,
-    PROCESS_STOP_RETRIES,
     SOCKET_WAIT_INTERVAL,
     SOCKET_WAIT_TIMEOUT,
     get_yadon_count,
 )
-
-
-def _pid_dir() -> Path:
-    d = PROJECT_ROOT / ".pids"
-    d.mkdir(exist_ok=True)
-    return d
-
-
-def _log_dir() -> Path:
-    d = PROJECT_ROOT / "logs"
-    d.mkdir(exist_ok=True)
-    return d
+from yadon_agents.infra.process import (
+    log_dir,
+    save_pid,
+    start_background,
+    stop_daemons,
+)
+from yadon_agents.themes import get_theme
 
 
 def _has_pyqt6() -> bool:
@@ -46,101 +39,21 @@ def _has_pyqt6() -> bool:
         return False
 
 
-def _ensure_pythonpath() -> dict[str, str]:
-    """PYTHONPATHにsrc/を含む環境変数を返す。"""
-    env = os.environ.copy()
-    src_dir = str(PROJECT_ROOT / "src")
-    current = env.get("PYTHONPATH", "")
-    if src_dir not in current:
-        env["PYTHONPATH"] = f"{src_dir}:{current}" if current else src_dir
-    return env
-
-
-def _start_process(cmd: list[str], log_path: Path) -> int:
-    """バックグラウンドプロセスを起動し、PIDを返す。"""
-    with open(log_path, "a") as log_f:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=log_f,
-            stderr=log_f,
-            start_new_session=True,
-            env=_ensure_pythonpath(),
-        )
-    return proc.pid
-
-
-def _save_pid(name: str, pid: int) -> None:
-    (_pid_dir() / f"{name}.pid").write_text(str(pid))
-
-
-def _read_pid(name: str) -> int | None:
-    """PIDファイルを読み、プロセスが生存していればPIDを返す。"""
-    pid_file = _pid_dir() / f"{name}.pid"
-    if not pid_file.exists():
-        return None
-    pid = int(pid_file.read_text().strip())
-    try:
-        os.kill(pid, 0)
-        return pid
-    except OSError:
-        pid_file.unlink(missing_ok=True)
-        return None
-
-
-def _stop_daemons(names: list[str]) -> None:
-    """全デーモンにSIGTERMを送信し、並列に終了を待つ。"""
-    # 生存中のプロセスを収集 & 一斉にSIGTERM送信
-    targets: list[tuple[str, int]] = []
-    for name in names:
-        pid = _read_pid(name)
-        if pid is not None:
-            os.kill(pid, signal.SIGTERM)
-            targets.append((name, pid))
-
-    if not targets:
-        return
-
-    # 全プロセスの終了を待つ（最大 PROCESS_STOP_RETRIES * PROCESS_STOP_INTERVAL 秒）
-    remaining = list(targets)
-    for _ in range(PROCESS_STOP_RETRIES):
-        if not remaining:
-            break
-        time.sleep(PROCESS_STOP_INTERVAL)
-        still_alive = []
-        for name, pid in remaining:
-            try:
-                os.kill(pid, 0)
-                still_alive.append((name, pid))
-            except OSError:
-                print(f"  {name}: 停止 (PID={pid})")
-                (_pid_dir() / f"{name}.pid").unlink(missing_ok=True)
-        remaining = still_alive
-
-    # タイムアウト — 残存プロセスをSIGKILL
-    for name, pid in remaining:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except OSError:
-            pass
-        print(f"  {name}: 強制停止 (PID={pid})")
-        (_pid_dir() / f"{name}.pid").unlink(missing_ok=True)
-
-
-def _wait_sockets(names: list[str], timeout: int = SOCKET_WAIT_TIMEOUT) -> bool:
+def _wait_sockets(names: list[str], prefix: str = "yadon", timeout: int = SOCKET_WAIT_TIMEOUT) -> bool:
     """ソケットファイルの作成を待つ。"""
     from yadon_agents.infra.protocol import agent_socket_path
     iterations = int(timeout / SOCKET_WAIT_INTERVAL)
     for _ in range(iterations):
-        if all(Path(agent_socket_path(n)).exists() for n in names):
+        if all(Path(agent_socket_path(n, prefix=prefix)).exists() for n in names):
             return True
         time.sleep(SOCKET_WAIT_INTERVAL)
     return False
 
 
-def _cleanup_sockets() -> None:
+def _cleanup_sockets(prefix: str = "yadon") -> None:
     """ソケットファイルを削除する。"""
     tmp = Path("/tmp")
-    for pattern in ["yadon-agent-*.sock", "yadon-pet-*.sock"]:
+    for pattern in [f"{prefix}-agent-*.sock", f"{prefix}-pet-*.sock"]:
         for sock in tmp.glob(pattern):
             try:
                 sock.unlink()
@@ -150,12 +63,17 @@ def _cleanup_sockets() -> None:
 
 def cmd_start(work_dir: str) -> None:
     """全エージェント起動"""
+    theme = get_theme()
     yadon_count = get_yadon_count()
+    worker_role = theme.agent_role_worker
+    manager_role = theme.agent_role_manager
+    coordinator_role = theme.agent_role_coordinator
+    prefix = theme.socket_prefix
 
     print()
-    print("\033[0;36mヤドン・エージェント 起動中...\033[0m")
+    print(f"\033[0;36m{theme.display_name} 起動中...\033[0m")
     print("   困ったなぁ...でもやるか...")
-    print(f"   ヤドン数: {yadon_count}")
+    print(f"   {theme.role_names.worker}数: {yadon_count}")
     print()
 
     # 既存プロセスの停止
@@ -164,68 +82,68 @@ def cmd_start(work_dir: str) -> None:
     print()
 
     use_gui = _has_pyqt6()
-    log_dir = _log_dir()
+    logs = log_dir()
 
-    # --- ヤドン 1-N 起動 ---
+    # --- ワーカー 1-N 起動 ---
     if use_gui:
-        print("\033[0;36mヤドンペット+デーモンを起動中...\033[0m")
+        print(f"\033[0;36m{theme.role_names.worker}ペット+デーモンを起動中...\033[0m")
         for n in range(1, yadon_count + 1):
             cmd = [sys.executable, "-m", "yadon_agents.gui.yadon_pet", "--number", str(n)]
-            pid = _start_process(cmd, log_dir / f"yadon-{n}.log")
-            _save_pid(f"yadon-{n}", pid)
-            print(f"  ヤドン{n}: ペット+デーモン PID={pid}")
+            pid = start_background(cmd, logs / f"{worker_role}-{n}.log")
+            save_pid(f"{worker_role}-{n}", pid)
+            print(f"  {theme.role_names.worker}{n}: ペット+デーモン PID={pid}")
     else:
-        print("\033[0;36mヤドンデーモンを起動中...\033[0m")
-        print("\033[1;33m!\033[0m PyQt6なし — デスクトップペットなしで起動")
+        print(f"\033[0;36m{theme.role_names.worker}デーモンを起動中...\033[0m")
+        print("\033[1;33m!\033[0m PyQt6なし -- デスクトップペットなしで起動")
         for n in range(1, yadon_count + 1):
             cmd = [sys.executable, "-m", "yadon_agents.agent.worker", "--number", str(n)]
-            pid = _start_process(cmd, log_dir / f"yadon-{n}.log")
-            _save_pid(f"yadon-{n}", pid)
-            print(f"  ヤドン{n}: デーモン PID={pid}")
+            pid = start_background(cmd, logs / f"{worker_role}-{n}.log")
+            save_pid(f"{worker_role}-{n}", pid)
+            print(f"  {theme.role_names.worker}{n}: デーモン PID={pid}")
 
     # ソケット待機
-    yadon_names = [f"yadon-{n}" for n in range(1, yadon_count + 1)]
+    worker_names = [f"{worker_role}-{n}" for n in range(1, yadon_count + 1)]
     print("  ソケット待機中...", end="", flush=True)
-    if _wait_sockets(yadon_names):
+    if _wait_sockets(worker_names, prefix=prefix):
         print(" OK")
     else:
         print()
-        print("\033[1;33m!\033[0m 一部のヤドンソケットが作成されませんでした")
+        print(f"\033[1;33m!\033[0m 一部の{theme.role_names.worker}ソケットが作成されませんでした")
 
-    # --- ヤドラン起動 ---
+    # --- マネージャー起動 ---
     if use_gui:
-        print("\033[0;36mヤドランペット+デーモンを起動中...\033[0m")
+        print(f"\033[0;36m{theme.role_names.manager}ペット+デーモンを起動中...\033[0m")
         cmd = [sys.executable, "-m", "yadon_agents.gui.yadoran_pet"]
-        pid = _start_process(cmd, log_dir / "yadoran.log")
-        _save_pid("yadoran", pid)
-        print(f"  ヤドラン: ペット+デーモン PID={pid}")
+        pid = start_background(cmd, logs / f"{manager_role}.log")
+        save_pid(manager_role, pid)
+        print(f"  {theme.role_names.manager}: ペット+デーモン PID={pid}")
     else:
-        print("\033[0;36mヤドランデーモンを起動中...\033[0m")
+        print(f"\033[0;36m{theme.role_names.manager}デーモンを起動中...\033[0m")
         cmd = [sys.executable, "-m", "yadon_agents.agent.manager"]
-        pid = _start_process(cmd, log_dir / "yadoran.log")
-        _save_pid("yadoran", pid)
-        print(f"  ヤドラン: デーモン PID={pid}")
+        pid = start_background(cmd, logs / f"{manager_role}.log")
+        save_pid(manager_role, pid)
+        print(f"  {theme.role_names.manager}: デーモン PID={pid}")
 
     print("  ソケット待機中...", end="", flush=True)
-    if _wait_sockets(["yadoran"]):
+    if _wait_sockets([manager_role], prefix=prefix):
         print(" OK")
     else:
         print()
-        print("\033[1;33m!\033[0m ヤドランのソケットが作成されませんでした")
+        print(f"\033[1;33m!\033[0m {theme.role_names.manager}のソケットが作成されませんでした")
 
-    # --- ヤドキング起動 ---
+    # --- コーディネーター起動 ---
     print()
-    print("\033[0;32mOK\033[0m ヤドラン+ヤドン起動完了")
+    print(f"\033[0;32mOK\033[0m {theme.role_names.manager}+{theme.role_names.worker}起動完了")
     print()
-    print("ヤドキング（claude --model opus）を起動します...")
+    print(f"{theme.role_names.coordinator}（claude --model opus）を起動します...")
     print()
 
     # 指示書読み込み
-    instructions_path = PROJECT_ROOT / "instructions" / "yadoking.md"
+    instructions_path = PROJECT_ROOT / theme.instructions_coordinator
     if instructions_path.exists():
         system_prompt = instructions_path.read_text()
     else:
-        system_prompt = "あなたはヤドキングです。"
+        system_prompt = f"あなたは{theme.role_names.coordinator}です。"
 
     system_prompt += f"""
 
@@ -239,7 +157,13 @@ def cmd_start(work_dir: str) -> None:
 - スクリプトは上記の絶対パスで実行すること（./scripts/ は使わない）"""
 
     env = os.environ.copy()
-    env["AGENT_ROLE"] = "yadoking"
+    env["AGENT_ROLE"] = coordinator_role
+    env["AGENT_ROLE_LEVEL"] = "coordinator"
+
+    def _sigterm_handler(signum, frame):
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
 
     try:
         result = subprocess.run(
@@ -254,9 +178,11 @@ def cmd_start(work_dir: str) -> None:
         exit_code = result.returncode
     except KeyboardInterrupt:
         exit_code = 0
+    except SystemExit:
+        exit_code = 0
     finally:
         print()
-        print("ヤドキング終了 — デーモン+ペットを停止中...")
+        print(f"{theme.role_names.coordinator}終了 -- デーモン+ペットを停止中...")
         cmd_stop()
 
     sys.exit(exit_code)
@@ -264,11 +190,14 @@ def cmd_start(work_dir: str) -> None:
 
 def cmd_stop() -> None:
     """全エージェント停止"""
+    theme = get_theme()
     print("停止中...")
 
     yadon_count = get_yadon_count()
-    all_names = [f"yadon-{n}" for n in range(1, yadon_count + 1)] + ["yadoran"]
-    _stop_daemons(all_names)
+    worker_role = theme.agent_role_worker
+    manager_role = theme.agent_role_manager
+    all_names = [f"{worker_role}-{n}" for n in range(1, yadon_count + 1)] + [manager_role]
+    stop_daemons(all_names)
 
     # フォールバック: プロセス名で残存プロセスを停止
     for pattern in ["yadon_pet", "yadoran_pet", "yadon_daemon", "yadoran_daemon",
@@ -282,12 +211,13 @@ def cmd_stop() -> None:
         except Exception:
             pass
 
-    _cleanup_sockets()
+    _cleanup_sockets(prefix=theme.socket_prefix)
     print("停止完了")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="ヤドン・エージェント CLI")
+    theme = get_theme()
+    parser = argparse.ArgumentParser(description=f"{theme.display_name} CLI")
     subparsers = parser.add_subparsers(dest="command")
 
     start_parser = subparsers.add_parser("start", help="全エージェント起動")
