@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
-import signal
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -41,29 +39,56 @@ logger = logging.getLogger(__name__)
 def _extract_json(output: str) -> dict[str, Any]:
     """Claude出力からJSONブロックを抽出してパースする。
 
-    ``````json ... `````` フェンスがあればその中身を、なければ出力全体をパースする。
+    3段階フォールバック:
+    1. ```json...``` フェンスがあれば抽出
+    2. 抽出したJSONを json.loads() で試行
+    3. 失敗時、地の文混在対応（{ から } までを切り出し）
 
     Raises:
         json.JSONDecodeError: JSONパースに失敗した場合
     """
     json_str = output.strip()
+
+    # (1) json フェンス探索・抽出
     if "```json" in json_str:
         try:
             start = json_str.index("```json") + 7
             end = json_str.index("```", start)
             json_str = json_str[start:end].strip()
         except ValueError:
-            # フェンスが閉じていない場合は出力全体をパース試行
-            json_str = output.strip()
+            # フェンスが閉じていない場合は後続のロジックで対応
+            pass
     elif "```" in json_str:
         try:
             start = json_str.index("```") + 3
             end = json_str.index("```", start)
             json_str = json_str[start:end].strip()
         except ValueError:
-            # フェンスが閉じていない場合は出力全体をパース試行
-            json_str = output.strip()
-    return json.loads(json_str)
+            # フェンスが閉じていない場合は後続のロジックで対応
+            pass
+
+    # (2) json.loads 試行
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        pass
+
+    # (3) 失敗時、output.find('{') から output.rfind('}') までを切り出して json.loads 試行
+    start_idx = output.find('{')
+    end_idx = output.rfind('}')
+    if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
+        json_str = output[start_idx:end_idx + 1]
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+
+    # (4) それでも失敗なら json.JSONDecodeError を raise
+    raise json.JSONDecodeError(
+        "JSONパースに失敗しました",
+        output,
+        0,
+    )
 
 
 def _aggregate_results(all_results: list[dict[str, Any]]) -> tuple[str, str, str]:
@@ -174,9 +199,12 @@ class YadoranManager(BaseAgent):
                 return phases
 
         except json.JSONDecodeError:
-            logger.warning("タスク分解のJSONパースに失敗、そのまま1タスクとして実行")
+            logger.warning("タスク分解のJSONパースに失敗、そのまま1タスクとして実行。出力: %s", output[:500])
         except Exception as e:
-            logger.warning("タスク分解エラー: %s、そのまま1タスクとして実行", e)
+            if "output" in locals():
+                logger.warning("タスク分解エラー: %s、Claude出力(最初の500文字): %s", e, output[:500])
+            else:
+                logger.warning("タスク分解エラー: %s、そのまま1タスクとして実行", e)
 
         # フォールバック: 旧形式互換（1フェーズ implement のみ）
         fallback: Phase = {"name": "implement", "subtasks": [{"instruction": instruction}]}
@@ -325,33 +353,3 @@ class YadoranManager(BaseAgent):
             current_task=self.current_task_id,
             workers=workers,
         ).to_dict()
-
-
-def main() -> None:
-    theme = get_theme()
-
-    parser = argparse.ArgumentParser(description=f"{theme.role_names.manager}マネージャー")
-    parser.parse_args()
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format=f"[{theme.agent_role_manager}] %(asctime)s %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
-    manager = YadoranManager()
-
-    def signal_handler(signum, frame):
-        manager.stop()
-
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-
-    try:
-        manager.serve_forever()
-    except KeyboardInterrupt:
-        manager.stop()
-
-
-if __name__ == "__main__":
-    main()
