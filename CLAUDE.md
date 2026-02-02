@@ -152,6 +152,39 @@ yadon-agents/
 `gui/base_pet.py` で共通ペットロジック（ドラッグ、アニメーション、描画、メニュー、吹き出し）を集約。
 YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_path` を受け取る（DI）。
 
+### ascii_art.py — ターミナル起動表示
+
+`ascii_art.py` はターミナルでヤドンのドット絵を表示するモジュール。
+
+**機能:**
+- `show_yadon_ascii()` — 起動時にヤドンのドット絵を表示（`cmd_start()` で呼び出し）
+- `print_yadon_sprite()` — ドット絵の各ピクセルをANSI背景色で描画（2文字幅ブロック）
+- `rgb_to_ansi256()` — RGB hex色（`#RRGGBB`）をANSI 256色パレット（16-231の6×6×6カラーキューブ）に近似変換
+
+**フロー:**
+1. テーマから `build_worker_pixel_data()` でドット絵ピクセル配列を構築（各色は`#RRGGBB`hex形式）
+2. 各ピクセルをANSI256コードに変換（`rgb_to_ansi256()`）
+3. ターミナルに背景色付きブロック（`\033[48;5;Nけ`）で描画
+
+### gui_daemon.py — GUIデーモン
+
+`gui_daemon.py` は別プロセスで起動するGUIデーモン。全ペットウィジェット・エージェントスレッド・Qtイベントループを管理する。
+
+**主要コンポーネント:**
+- **QApplication** — Qtイベントループのマスター。フォーカス奪取防止設定（`setQuitOnLastWindowClosed(False)`）
+- **ワーカーペット 1〜N** — 各 `YadonPet` とそれに紐付く `AgentThread(YadonWorker)` を構築
+- **マネージャーペット** — `YadoranPet` とそれに紐付く `AgentThread(YadoranManager)` を構築
+- **配置** — 画面右下からスタック配置（`x_pos = screen.width() - margin - (WIDTH + spacing) * number`）
+- **ウェルカムメッセージ** — 起動後、各ペットの吹き出しにテーマから選択したランダムなメッセージを表示（`QTimer.singleShot(0, _show_welcome)`）
+
+**フロー:**
+1. テーマ・ヤドン数を取得
+2. QApplication作成＆初期化（Pythonシグナル処理用タイマー含む）
+3. ワーカーペット（`YadonPet × N`）を構築＆配置
+4. マネージャーペット（`YadoranPet`）を構築＆配置
+5. ウェルカムメッセージ表示
+6. `app.exec()` でQtイベントループ開始（ペット操作・吹き出し・エージェント通信を駆動）
+
 ### cmd_start() — グローバル Composition Root
 
 `cli.py` の `cmd_start()` 関数がグローバルな Composition Root として機能する。
@@ -248,6 +281,18 @@ python -m pytest tests/ -v
 ### 失敗テストなし
 
 現在全てのテストが成功しています。
+
+**テスト実行環境:**
+- Python 3.10+
+- pytest（テストランナー）
+- 依存モック（ClaudeRunnerPort、subprocess）
+
+**カバレッジ内容:**
+- Socket communication: Unix ドメインソケットの作成・送受信・クリーンアップ
+- Agent orchestration: BaseAgent の on_bubble callback、ソケットサーバーループ
+- Task decomposition: YadoranManager の JSON抽出＆3フェーズ分解＆並列dispatch＆結果集約
+- Worker execution: YadonWorker のタスク実行＆プロンプト構築
+- Domain types: メッセージ型、テーマ設定、テキスト要約
 
 ## 通信プロトコル
 
