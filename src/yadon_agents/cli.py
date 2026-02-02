@@ -89,8 +89,6 @@ def cmd_start(work_dir: str) -> None:
 
     # --- QApplication 作成 ---
     app = QApplication(sys.argv)
-    # フォーカスを奪わない設定
-    app.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, True)
 
     # macOS: Pythonシグナル処理のためのタイマー
     sig_timer = QTimer()
@@ -118,9 +116,6 @@ def cmd_start(work_dir: str) -> None:
             variant=variant,
         )
 
-        # フォーカスを奪わないようにする
-        pet.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
-
         x_pos = screen.width() - margin - (WINDOW_WIDTH + spacing) * n
         y_pos = screen.height() - margin - WINDOW_HEIGHT
         pet.move(x_pos, y_pos)
@@ -146,9 +141,6 @@ def cmd_start(work_dir: str) -> None:
         agent_thread=manager_agent_thread,
         pet_sock_path=pet_socket_path(theme.agent_role_manager, prefix=prefix),
     )
-
-    # フォーカスを奪わないようにする
-    manager_pet.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
     x_pos = screen.width() - margin - (WINDOW_WIDTH + spacing) * (yadon_count + 1)
     y_pos = screen.height() - margin - WINDOW_HEIGHT

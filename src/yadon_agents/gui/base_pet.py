@@ -110,9 +110,10 @@ class BasePet(QWidget):
             flags |= Qt.WindowType.WindowDoesNotAcceptFocus
         self.setWindowFlags(flags)
 
-        self.show()
-        self.raise_()
-        QTimer.singleShot(0, lambda: mac_set_top_nonactivating(self))
+        # フォーカスを奪わないように表示
+        self.setVisible(True)
+        # raise_()を呼ばない（フォーカスを奪う原因）
+        QTimer.singleShot(100, lambda: mac_set_top_nonactivating(self))
         self._top_keepalive = QTimer(self)
         self._top_keepalive.timeout.connect(lambda: mac_set_top_nonactivating(self))
         self._top_keepalive.start(5000)
