@@ -169,6 +169,7 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 ### gui_daemon.py — GUIデーモン
 
 `gui_daemon.py` は別プロセスで起動するGUIデーモン。全ペットウィジェット・エージェントスレッド・Qtイベントループを管理する。
+`cmd_start()` から `subprocess.Popen()` で起動され、stderrは `~/.yadon-agents/logs/gui_daemon.log` に追記モード出力、stdoutはDEVNULL（PyQt不要出力抑制）。
 
 **主要コンポーネント:**
 - **QApplication** — Qtイベントループのマスター。フォーカス奪取防止設定（`setQuitOnLastWindowClosed(False)`）

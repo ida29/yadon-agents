@@ -77,42 +77,44 @@ def cmd_start(work_dir: str) -> None:
 
     # GUIデーモンを別プロセスで起動
     print(f"\033[0;36mGUIデーモンを起動中...\033[0m")
-    gui_process = subprocess.Popen(
-        [sys.executable, "-m", "yadon_agents.gui_daemon"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,  # 完全に独立したプロセスグループ
-    )
-    print(f"  GUI PID: {gui_process.pid}")
+    log_file = open(log_dir() / "gui_daemon.log", "a")
+    try:
+        gui_process = subprocess.Popen(
+            [sys.executable, "-m", "yadon_agents.gui_daemon"],
+            stdout=subprocess.DEVNULL,
+            stderr=log_file,
+            start_new_session=True,  # 完全に独立したプロセスグループ
+        )
+        print(f"  GUI PID: {gui_process.pid}")
 
-    # ソケット待機
-    worker_role = theme.agent_role_worker
-    manager_role = theme.agent_role_manager
-    worker_names = [f"{worker_role}-{n}" for n in range(1, yadon_count + 1)]
-    all_agents = worker_names + [manager_role]
+        # ソケット待機
+        worker_role = theme.agent_role_worker
+        manager_role = theme.agent_role_manager
+        worker_names = [f"{worker_role}-{n}" for n in range(1, yadon_count + 1)]
+        all_agents = worker_names + [manager_role]
 
-    print(f"\033[0;36mエージェントソケット待機中...\033[0m", end="", flush=True)
-    if _wait_sockets(all_agents, prefix=prefix):
-        print(" OK")
-    else:
+        print(f"\033[0;36mエージェントソケット待機中...\033[0m", end="", flush=True)
+        if _wait_sockets(all_agents, prefix=prefix):
+            print(" OK")
+        else:
+            print()
+            print(f"\033[1;33m!\033[0m 一部のエージェントソケットが作成されませんでした")
+
+        # --- コーディネーター起動 ---
         print()
-        print(f"\033[1;33m!\033[0m 一部のエージェントソケットが作成されませんでした")
+        print(f"\033[0;32mOK\033[0m {theme.role_names.manager}+{theme.role_names.worker}起動完了")
+        print()
+        print(f"{theme.role_names.coordinator}（claude --model opus）を起動します...")
+        print()
 
-    # --- コーディネーター起動 ---
-    print()
-    print(f"\033[0;32mOK\033[0m {theme.role_names.manager}+{theme.role_names.worker}起動完了")
-    print()
-    print(f"{theme.role_names.coordinator}（claude --model opus）を起動します...")
-    print()
+        # 指示書読み込み
+        instructions_path = PROJECT_ROOT / theme.instructions_coordinator
+        if instructions_path.exists():
+            system_prompt = instructions_path.read_text()
+        else:
+            system_prompt = f"あなたは{theme.role_names.coordinator}です。"
 
-    # 指示書読み込み
-    instructions_path = PROJECT_ROOT / theme.instructions_coordinator
-    if instructions_path.exists():
-        system_prompt = instructions_path.read_text()
-    else:
-        system_prompt = f"あなたは{theme.role_names.coordinator}です。"
-
-    system_prompt += f"""
+        system_prompt += f"""
 
 ---
 【システム情報】
@@ -123,41 +125,42 @@ def cmd_start(work_dir: str) -> None:
 - stop.sh: {PROJECT_ROOT}/stop.sh
 - スクリプトは上記の絶対パスで実行すること（./scripts/ は使わない）"""
 
-    env = os.environ.copy()
-    env["AGENT_ROLE"] = coordinator_role
-    env["AGENT_ROLE_LEVEL"] = "coordinator"
+        env = os.environ.copy()
+        env["AGENT_ROLE"] = coordinator_role
+        env["AGENT_ROLE_LEVEL"] = "coordinator"
 
-    # コーディネーター起動（ブロッキング）
-    try:
-        result = subprocess.run(
-            [
-                "claude", "--model", "opus",
-                "--dangerously-skip-permissions",
-                "--append-system-prompt", system_prompt,
-            ],
-            cwd=work_dir,
-            env=env,
-        )
-        exit_code = result.returncode
-    except KeyboardInterrupt:
-        exit_code = 0
-
-    # --- 終了処理 ---
-    print()
-    print(f"{theme.role_names.coordinator}終了 -- GUIデーモンを停止中...")
-
-    # GUIプロセスを停止
-    try:
-        gui_process.terminate()
-        gui_process.wait(timeout=5)
-    except Exception:
+        # コーディネーター起動（ブロッキング）
         try:
-            gui_process.kill()
-        except Exception:
-            pass
+            result = subprocess.run(
+                [
+                    "claude", "--model", "opus",
+                    "--dangerously-skip-permissions",
+                    "--append-system-prompt", system_prompt,
+                ],
+                cwd=work_dir,
+                env=env,
+            )
+            exit_code = result.returncode
+        except KeyboardInterrupt:
+            exit_code = 0
 
-    _cleanup_sockets(prefix=prefix)
-    print("停止完了")
+        # --- 終了処理 ---
+        print()
+        print(f"{theme.role_names.coordinator}終了 -- GUIデーモンを停止中...")
+
+        # GUIプロセスを停止
+        try:
+            gui_process.terminate()
+            gui_process.wait(timeout=5)
+        except Exception:
+            try:
+                gui_process.kill()
+            except Exception:
+                pass
+        _cleanup_sockets(prefix=prefix)
+        print("停止完了")
+    finally:
+        log_file.close()
 
     sys.exit(exit_code)
 
