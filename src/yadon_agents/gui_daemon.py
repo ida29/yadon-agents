@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import random
 import sys
 from pathlib import Path
 
@@ -75,6 +76,15 @@ def main() -> None:
     y_pos = screen.height() - margin - WINDOW_HEIGHT
     manager_pet.move(x_pos, y_pos)
     pets.append(manager_pet)
+
+    def _show_welcome():
+        for pet in pets:
+            if isinstance(pet, YadoranPet):
+                pet.show_bubble(random.choice(theme.manager_welcome_messages), "normal")
+            else:
+                pet.show_bubble(random.choice(theme.welcome_messages), "normal")
+
+    QTimer.singleShot(0, _show_welcome)
 
     # Qtイベントループ
     sys.exit(app.exec())
