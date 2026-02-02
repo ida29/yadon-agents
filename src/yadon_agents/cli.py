@@ -57,7 +57,7 @@ def _cleanup_sockets(prefix: str = "yadon") -> None:
 def cmd_start(work_dir: str) -> None:
     """全エージェントを1プロセスで起動"""
     from PyQt6.QtWidgets import QApplication
-    from PyQt6.QtCore import QTimer
+    from PyQt6.QtCore import QTimer, Qt
     from PyQt6.QtGui import QCursor
 
     from yadon_agents.agent.manager import YadoranManager
@@ -89,6 +89,8 @@ def cmd_start(work_dir: str) -> None:
 
     # --- QApplication 作成 ---
     app = QApplication(sys.argv)
+    # フォーカスを奪わない設定
+    app.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, True)
 
     # macOS: Pythonシグナル処理のためのタイマー
     sig_timer = QTimer()
@@ -116,6 +118,9 @@ def cmd_start(work_dir: str) -> None:
             variant=variant,
         )
 
+        # フォーカスを奪わないようにする
+        pet.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+
         x_pos = screen.width() - margin - (WINDOW_WIDTH + spacing) * n
         y_pos = screen.height() - margin - WINDOW_HEIGHT
         pet.move(x_pos, y_pos)
@@ -141,6 +146,9 @@ def cmd_start(work_dir: str) -> None:
         agent_thread=manager_agent_thread,
         pet_sock_path=pet_socket_path(theme.agent_role_manager, prefix=prefix),
     )
+
+    # フォーカスを奪わないようにする
+    manager_pet.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
     x_pos = screen.width() - margin - (WINDOW_WIDTH + spacing) * (yadon_count + 1)
     y_pos = screen.height() - margin - WINDOW_HEIGHT
@@ -273,6 +281,11 @@ def main() -> None:
     subparsers.add_parser("stop", help="全エージェント停止")
 
     args = parser.parse_args()
+
+    # デフォルトコマンドは start
+    if args.command is None:
+        args.command = "start"
+        args.work_dir = str(Path.cwd())
 
     if args.command == "start":
         work_dir = str(Path(args.work_dir).resolve())
