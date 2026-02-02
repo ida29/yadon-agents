@@ -52,12 +52,16 @@ def _cleanup_sockets(prefix: str = "yadon") -> None:
 
 def cmd_start(work_dir: str) -> None:
     """全エージェント起動（GUIは別プロセス）"""
+    from yadon_agents.ascii_art import show_yadon_ascii
+
     theme = get_theme()
     yadon_count = get_yadon_count()
     coordinator_role = theme.agent_role_coordinator
     prefix = theme.socket_prefix
 
-    print()
+    # ヤドンのドット絵を表示
+    show_yadon_ascii()
+
     print(f"\033[0;36m{theme.display_name} 起動中...\033[0m")
     print("   困ったなぁ...でもやるか...")
     print(f"   {theme.role_names.worker}数: {yadon_count}")
