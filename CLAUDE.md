@@ -52,8 +52,8 @@ yadon-agents/
 │   └── yadon_agents/
 │       ├── __init__.py
 │       ├── cli.py                    # Composition Root: yadon start/stop、GUIデーモン起動+ソケット待機+コーディネーター起動
-│       ├── ascii_art.py              # ターミナル用ヤドンASCIIアート（ANSI 256色）
-│       ├── gui_daemon.py             # GUIデーモン（別プロセス）: PyQt6 QApplication + 全ペット + 全エージェントスレッド
+│       ├── ascii_art.py              # ターミナル用ヤドンASCIIアート表示（RGB→ANSI256色変換）
+│       ├── gui_daemon.py             # GUIデーモン（別プロセス）: PyQt6 QApplication + ペット1-N + マネージャー + エージェントスレッド
 │       │
 │       ├── domain/                   # ドメイン層（純粋データ、I/Oなし）
 │       │   ├── types.py             # AgentRole enum
