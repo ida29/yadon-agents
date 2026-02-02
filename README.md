@@ -38,25 +38,51 @@
 claude  # 初回起動で認証
 ```
 
-### 2. リポジトリをクローン
+### 2. uv をインストール
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### 3. リポジトリをクローン
 
 ```bash
 git clone https://github.com/ida29/yadon-agents.git
 cd yadon-agents
 ```
 
-### 3. PyQt6 をインストール（任意）
-
-デスクトップペットを表示する場合のみ必要。なくてもデーモンモードで動作する。
+### 4. 依存関係をインストール
 
 ```bash
-pip install PyQt6
+uv sync
+```
+
+PyQt6も自動的にインストールされ、デスクトップペットが使えるようになります。
+
+### 5. グローバルコマンドとしてインストール（オプション）
+
+システム全体で`yadon`コマンドを使いたい場合:
+
+```bash
+uv tool install -e ".[gui]"
 ```
 
 ## 起動
 
+### start.sh を使う場合
+
 ```bash
 ./start.sh
+```
+
+### yadon コマンドを使う場合
+
+```bash
+# uv経由で実行
+uv run yadon start
+
+# またはグローバルインストール済みの場合
+yadon start
 ```
 
 これだけで以下が順に起動する:

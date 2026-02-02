@@ -16,3 +16,14 @@ logs/
 # Python cache
 __pycache__/
 *.pyc
+
+# Virtual environment (uv)
+.venv/
+venv/
+*.egg-info/
+
+# uv
+uv.lock
+
+# Pytest cache
+.pytest_cache/

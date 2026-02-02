@@ -3,20 +3,30 @@ name = "yadon-agents"
 version = "0.1.0"
 description = "ヤドン・エージェント — マルチエージェントシステム"
 requires-python = ">=3.9"
+dependencies = [
+    "PyQt6>=6.5.0",
+]
 
 [project.optional-dependencies]
-gui = ["PyQt6>=6.5.0"]
+dev = [
+    "pytest>=8.0.0",
+]
 
 [project.scripts]
 yadon = "yadon_agents.cli:main"
 
 [build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/yadon_agents"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]

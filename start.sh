@@ -10,13 +10,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
 
-# Python3の確認
-if ! command -v python3 &> /dev/null; then
-    echo -e "\033[0;31mエラー\033[0m Python3 が見つかりません"
+# uvのチェック
+if ! command -v uv &> /dev/null; then
+    echo -e "\033[0;31mエラー\033[0m uv が見つかりません"
+    echo "インストールしてください: curl -LsSf https://astral.sh/uv/install.sh | sh"
     exit 1
 fi
 
-export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
-
+# uv環境で実行
+cd "$SCRIPT_DIR"
 WORK_DIR="${1:-$(pwd)}"
-exec python3 -m yadon_agents.cli start "$WORK_DIR"
+exec uv run yadon start "$WORK_DIR"
