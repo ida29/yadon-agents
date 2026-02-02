@@ -2,11 +2,14 @@
 set -euo pipefail
 
 # ヤドン・エージェント 停止スクリプト
-# 1プロセスを pkill で停止し、ソケットをクリーンアップする
+# GUIデーモン + CLI プロセスを pkill で停止し、ソケットをクリーンアップする
 
 echo "停止中..."
 
-# メインプロセスを停止
+# GUIデーモンプロセスを停止
+pkill -f "yadon_agents.gui_daemon" 2>/dev/null || true
+
+# CLIプロセスを停止
 pkill -f "yadon_agents.cli start" 2>/dev/null || true
 
 # ソケットのクリーンアップ
