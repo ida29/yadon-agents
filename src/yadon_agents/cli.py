@@ -11,11 +11,8 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import random
-import signal
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -24,7 +21,6 @@ from yadon_agents.config.agent import (
     SOCKET_WAIT_INTERVAL,
     SOCKET_WAIT_TIMEOUT,
     get_yadon_count,
-    get_yadon_variant,
 )
 from yadon_agents.infra.process import log_dir
 from yadon_agents.themes import get_theme
@@ -55,19 +51,7 @@ def _cleanup_sockets(prefix: str = "yadon") -> None:
 
 
 def cmd_start(work_dir: str) -> None:
-    """全エージェントを1プロセスで起動"""
-    from PyQt6.QtWidgets import QApplication
-    from PyQt6.QtCore import QTimer, Qt
-    from PyQt6.QtGui import QCursor
-
-    from yadon_agents.agent.manager import YadoranManager
-    from yadon_agents.agent.worker import YadonWorker
-    from yadon_agents.config.ui import WINDOW_WIDTH, WINDOW_HEIGHT
-    from yadon_agents.gui.agent_thread import AgentThread
-    from yadon_agents.gui.yadon_pet import YadonPet
-    from yadon_agents.gui.yadoran_pet import YadoranPet
-    from yadon_agents.infra.protocol import pet_socket_path
-
+    """全エージェント起動（GUIは別プロセス）"""
     theme = get_theme()
     yadon_count = get_yadon_count()
     coordinator_role = theme.agent_role_coordinator
@@ -87,76 +71,30 @@ def cmd_start(work_dir: str) -> None:
     # ログディレクトリ確保
     log_dir()
 
-    # --- QApplication 作成 ---
-    app = QApplication(sys.argv)
-
-    # macOS: Pythonシグナル処理のためのタイマー
-    sig_timer = QTimer()
-    sig_timer.timeout.connect(lambda: None)
-    sig_timer.start(500)
-
-    screen_obj = QApplication.screenAt(QCursor.pos()) or QApplication.primaryScreen()
-    screen = screen_obj.geometry()
-    margin = 20
-    spacing = 10
-
-    # --- ワーカー 1-N 構築 ---
-    print(f"\033[0;36m{theme.role_names.worker}を起動中...\033[0m")
-    pets: list[YadonPet | YadoranPet] = []
-
-    for n in range(1, yadon_count + 1):
-        worker = YadonWorker(n, str(PROJECT_ROOT))
-        agent_thread = AgentThread(worker)
-        variant = get_yadon_variant(n)
-
-        pet = YadonPet(
-            yadon_number=n,
-            agent_thread=agent_thread,
-            pet_sock_path=pet_socket_path(str(n), prefix=prefix),
-            variant=variant,
-        )
-
-        x_pos = screen.width() - margin - (WINDOW_WIDTH + spacing) * n
-        y_pos = screen.height() - margin - WINDOW_HEIGHT
-        pet.move(x_pos, y_pos)
-        pets.append(pet)
-        print(f"  {theme.role_names.worker}{n}: 起動")
+    # GUIデーモンを別プロセスで起動
+    print(f"\033[0;36mGUIデーモンを起動中...\033[0m")
+    gui_process = subprocess.Popen(
+        [sys.executable, "-m", "yadon_agents.gui_daemon"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,  # 完全に独立したプロセスグループ
+    )
+    print(f"  GUI PID: {gui_process.pid}")
 
     # ソケット待機
     worker_role = theme.agent_role_worker
-    worker_names = [f"{worker_role}-{n}" for n in range(1, yadon_count + 1)]
-    print("  ソケット待機中...", end="", flush=True)
-    if _wait_sockets(worker_names, prefix=prefix):
-        print(" OK")
-    else:
-        print()
-        print(f"\033[1;33m!\033[0m 一部の{theme.role_names.worker}ソケットが作成されませんでした")
-
-    # --- マネージャー構築 ---
-    print(f"\033[0;36m{theme.role_names.manager}を起動中...\033[0m")
-    manager = YadoranManager(str(PROJECT_ROOT))
-    manager_agent_thread = AgentThread(manager)
-
-    manager_pet = YadoranPet(
-        agent_thread=manager_agent_thread,
-        pet_sock_path=pet_socket_path(theme.agent_role_manager, prefix=prefix),
-    )
-
-    x_pos = screen.width() - margin - (WINDOW_WIDTH + spacing) * (yadon_count + 1)
-    y_pos = screen.height() - margin - WINDOW_HEIGHT
-    manager_pet.move(x_pos, y_pos)
-    pets.append(manager_pet)
-    print(f"  {theme.role_names.manager}: 起動")
-
     manager_role = theme.agent_role_manager
-    print("  ソケット待機中...", end="", flush=True)
-    if _wait_sockets([manager_role], prefix=prefix):
+    worker_names = [f"{worker_role}-{n}" for n in range(1, yadon_count + 1)]
+    all_agents = worker_names + [manager_role]
+
+    print(f"\033[0;36mエージェントソケット待機中...\033[0m", end="", flush=True)
+    if _wait_sockets(all_agents, prefix=prefix):
         print(" OK")
     else:
         print()
-        print(f"\033[1;33m!\033[0m {theme.role_names.manager}のソケットが作成されませんでした")
+        print(f"\033[1;33m!\033[0m 一部のエージェントソケットが作成されませんでした")
 
-    # --- コーディネーター起動準備 ---
+    # --- コーディネーター起動 ---
     print()
     print(f"\033[0;32mOK\033[0m {theme.role_names.manager}+{theme.role_names.worker}起動完了")
     print()
@@ -185,57 +123,34 @@ def cmd_start(work_dir: str) -> None:
     env["AGENT_ROLE"] = coordinator_role
     env["AGENT_ROLE_LEVEL"] = "coordinator"
 
-    exit_code = 0
-
-    def _run_coordinator() -> None:
-        nonlocal exit_code
-        try:
-            result = subprocess.run(
-                [
-                    "claude", "--model", "opus",
-                    "--dangerously-skip-permissions",
-                    "--append-system-prompt", system_prompt,
-                ],
-                cwd=work_dir,
-                env=env,
-            )
-            exit_code = result.returncode
-        except KeyboardInterrupt:
-            exit_code = 0
-        finally:
-            # コーディネーター終了 → Qtイベントループを終了
-            QApplication.quit()
-
-    coordinator_thread = threading.Thread(target=_run_coordinator, daemon=True)
-    coordinator_thread.start()
-
-    def _sigterm_handler(signum, frame):
-        QApplication.quit()
-
-    signal.signal(signal.SIGTERM, _sigterm_handler)
-
-    # --- ウェルカムメッセージ（イベントループ開始後に表示） ---
-    def _show_welcome():
-        for pet in pets:
-            if isinstance(pet, YadoranPet):
-                pet.show_bubble(random.choice(theme.manager_welcome_messages), 'normal')
-            else:
-                pet.show_bubble(random.choice(theme.welcome_messages), 'normal')
-
-    QTimer.singleShot(0, _show_welcome)
-
-    # --- Qtイベントループ（ブロック） ---
+    # コーディネーター起動（ブロッキング）
     try:
-        app.exec()
+        result = subprocess.run(
+            [
+                "claude", "--model", "opus",
+                "--dangerously-skip-permissions",
+                "--append-system-prompt", system_prompt,
+            ],
+            cwd=work_dir,
+            env=env,
+        )
+        exit_code = result.returncode
     except KeyboardInterrupt:
-        pass
+        exit_code = 0
 
     # --- 終了処理 ---
     print()
-    print(f"{theme.role_names.coordinator}終了 -- ペットを停止中...")
+    print(f"{theme.role_names.coordinator}終了 -- GUIデーモンを停止中...")
 
-    for pet in reversed(pets):
-        pet.close()
+    # GUIプロセスを停止
+    try:
+        gui_process.terminate()
+        gui_process.wait(timeout=5)
+    except Exception:
+        try:
+            gui_process.kill()
+        except Exception:
+            pass
 
     _cleanup_sockets(prefix=prefix)
     print("停止完了")
@@ -249,7 +164,7 @@ def cmd_stop() -> None:
     print("停止中...")
 
     # プロセス名で残存プロセスを停止
-    for pattern in ["yadon_agents.cli start"]:
+    for pattern in ["yadon_agents.cli start", "yadon_agents.gui_daemon"]:
         try:
             subprocess.run(
                 ["pkill", "-f", pattern],
