@@ -29,7 +29,7 @@
                       N = YADON_COUNT環境変数（デフォルト4、範囲1-8）
 ```
 
-全エージェント（ヤドラン + ヤドン1〜N）は1つのPyQt6プロセス内でスレッド実行される。
+GUIデーモン（ヤドラン + ヤドン1〜N のペットUI + エージェントスレッド）は別プロセスで起動され、CLIプロセス（ヤドキング）とは独立して動作する。
 
 ## 役割対応表
 
@@ -46,18 +46,21 @@
 ```
 yadon-agents/
 ├── pyproject.toml                    # パッケージ定義 + CLIエントリポイント
-├── setup.py                          # 互換性shim (pip < 23)
-├── start.sh                          # 起動ラッパー → python3 -m yadon_agents.cli start
-├── stop.sh                           # 停止スクリプト（pkill + ソケットクリーンアップ、1プロセス統合用）
+├── start.sh                          # 起動ラッパー → uv run yadon start
+├── stop.sh                           # 停止スクリプト（gui_daemon + cli両方をpkill、ソケットクリーンアップ）
 ├── src/
 │   └── yadon_agents/
 │       ├── __init__.py
-│       ├── cli.py                    # Composition Root: yadon start/stop、全依存・QApplication・Qtイベントループを組み立て
+│       ├── cli.py                    # Composition Root: yadon start/stop、GUIデーモン起動+ソケット待機+コーディネーター起動
+│       ├── ascii_art.py              # ターミナル用ヤドンASCIIアート（ANSI 256色）
+│       ├── gui_daemon.py             # GUIデーモン（別プロセス）: PyQt6 QApplication + 全ペット + 全エージェントスレッド
 │       │
 │       ├── domain/                   # ドメイン層（純粋データ、I/Oなし）
 │       │   ├── types.py             # AgentRole enum
 │       │   ├── messages.py          # TaskMessage, ResultMessage, StatusQuery, StatusResponse
 │       │   ├── formatting.py        # summarize_for_bubble（吹き出し用テキスト要約）
+│       │   ├── task_types.py        # Subtask, Phase TypedDict（タスク分解結果の型）
+│       │   ├── theme.py             # ThemeConfig frozen dataclass（テーマ全設定）
 │       │   └── ports/               # ポート定義（抽象インターフェース）
 │       │       ├── agent_port.py    # AgentPort ABC, BubbleCallback型
 │       │       └── claude_port.py   # ClaudeRunnerPort ABC
@@ -76,7 +79,7 @@ yadon-agents/
 │       │   ├── agent.py             # メッセージ定数、バリアント、やるきスイッチ、get_yadon_count()
 │       │   └── ui.py                # ピクセルサイズ、フォント、色、アニメーション設定
 │       │
-│       └── gui/                      # GUI層（PyQt6、オプション依存）
+│       ├── gui/                      # GUI層（PyQt6、オプション依存）
 │           ├── base_pet.py          # BasePet(QWidget): 共通ペットロジック
 │           ├── yadon_pet.py         # YadonPet(BasePet): やるきスイッチ等
 │           ├── yadoran_pet.py       # YadoranPet(BasePet)
@@ -84,14 +87,20 @@ yadon-agents/
 │           ├── pet_socket_server.py # PetSocketServer(QThread): 吹き出し受信
 │           ├── speech_bubble.py     # 吹き出しウィジェット
 │           ├── pokemon_menu.py      # 右クリックメニュー
-│           ├── pixel_data.py        # ヤドン ドット絵
-│           ├── yadoran_pixel_data.py # ヤドラン ドット絵
+│           ├── pixel_data.py        # テーマ経由のスプライト委譲
+│           ├── yadoran_pixel_data.py # テーマ経由のスプライト委譲
 │           └── macos.py             # macOS window elevation (NSWindow)
+│       └── themes/                   # テーマ層（スプライト・スタイル管理）
+│           ├── __init__.py          # テーマファクトリ
+│           └── yadon/               # ヤドン標準テーマ
+│               ├── __init__.py      # YadonTheme定義
+│               └── sprites.py       # ヤドン ドット絵スプライトデータ
 │
 ├── tests/                            # テスト（pytest）
 │   ├── domain/
 │   │   ├── test_formatting.py       # summarize_for_bubble テスト
-│   │   └── test_messages.py         # メッセージ型テスト
+│   │   ├── test_messages.py         # メッセージ型テスト
+│   │   └── test_theme.py            # ThemeConfig テスト
 │   ├── infra/
 │   │   ├── test_protocol.py         # Unixソケット通信テスト
 │   │   └── test_claude_runner.py    # SubprocessClaudeRunner テスト（subprocess モック）
@@ -148,16 +157,17 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 `cli.py` の `cmd_start()` 関数がグローバルな Composition Root として機能する。
 
 **責務:**
-1. **QApplication + Qtイベントループ作成** — 1つのプロセス内で全ペット・ワーカー・マネージャーを駆動
-2. **全依存の組み立て** — YadonWorker N個 → AgentThread ラップ → YadonPet 構築 → YadoranManager → YadoranPet 構築
-3. **ログディレクトリ確保** — `log_dir()` で PID ファイルなしの統一ログ領域を初期化
-4. **ソケット待機** — `_wait_sockets()` で全ワーカー・マネージャーの起動完了を同期
-5. **コーディネーター（Opus）起動** — `subprocess.run(["claude", "--model", "opus", ...])` で人間インターフェース
-6. **終了処理** — コーディネーター終了 → `QApplication.quit()` で全ペット・スレッド自動停止 → ソケット削除
+1. **ヤドン ASCIIアート表示** — 起動時にターミナルに ASCII アート を表示
+2. **既存プロセス停止** — 旧プロセスが起動している場合は `pkill -f` で停止
+3. **ログディレクトリ確保** — `log_dir()` で統一ログ領域を初期化
+4. **GUIデーモンを別プロセスで起動** — `subprocess.Popen()` で `python3 -m yadon_agents.gui_daemon` を背景実行
+5. **ソケット待機** — `_wait_sockets()` で全ペット・ワーカー・マネージャーの起動完了を同期
+6. **コーディネーター（Opus）起動** — `subprocess.run(["claude", "--model", "opus", ...])` で人間インターフェース
+7. **終了処理** — コーディネーター終了時に GUIプロセスを `terminate()` → `kill()` で停止し、ソケット削除
 
 **特徴:**
-- **1プロセス統合** — 複数の独立したデーモンではなく、1つの PyQt6 QApplication で全ペット + 全エージェント を同時起動
-- **PID管理撤去** — ファイルベースのPID追跡は不要。プロセス終了時 `QApplication.quit()` で自動停止
+- **2プロセス構成** — CLI プロセス（ヤドキング・ヤドラン・ヤドン） + GUI デーモンプロセス（ペット UI・吹き出し）を分離
+- **フォーカス奪取防止** — GUI デーモンを別プロセスで実行することで、ターミナルフォーカスの奪取を回避
 - **スケーラビリティ** — `YADON_COUNT` で ワーカー数を 1〜8 に動的調整可能。マネージャーは常時1個固定
 
 ### YadoranManager — JSON抽出とタスク分解
@@ -199,6 +209,45 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 
 - **FakeClaudeRunner**: 各テストファイル（`test_manager.py`、`test_worker.py`、`test_claude_runner.py`）内で`ClaudeRunnerPort`モックを独立に定義。共有テストフィクスチャは使用せず、テスト独立性を確保
 - **setup_method**: テストクラスの各テストメソッド実行前に`setup_method`で theme cache をリセット（`from yadon_agents.config.ui import PIXEL_DATA_CACHE; PIXEL_DATA_CACHE.clear()`）
+
+## テスト
+
+### テスト実行結果
+
+**実行日**: 2026年2月2日
+**テスト総数**: 80
+**成功**: 80 (100%)
+**失敗**: 0 (0%)
+
+```bash
+python -m pytest tests/ -v
+# ============================= test session starts ==============================
+# 80 passed in 0.07s
+```
+
+### テスト構成（80テスト）
+
+| モジュール | テストファイル | テスト数 | ステータス |
+|-----------|----------------|---------|-----------|
+| **agent** | `test_base.py` | 5 | ✅ All pass |
+| | `test_manager.py` | 9 | ✅ All pass |
+| | `test_worker.py` | 7 | ✅ All pass |
+| **domain** | `test_formatting.py` | 7 | ✅ All pass |
+| | `test_messages.py` | 9 | ✅ All pass |
+| | `test_theme.py` | 34 | ✅ All pass |
+| **infra** | `test_claude_runner.py` | 4 | ✅ All pass |
+| | `test_protocol.py` | 6 | ✅ All pass |
+| **合計** | | **80** | ✅ **全成功** |
+
+### テスト範囲
+
+- **Agent Layer**: ソケット通信、メッセージハンドリング、タスク分解、結果集約、ワーカータスク実行
+- **Domain Layer**: テキスト要約、メッセージ型、ThemeConfig、スプライトビルダー、後方互換性
+- **Infra Layer**: Claude CLIランナー（subprocess実行、タイムアウト）、Unixソケット通信（作成・送受信・クリーンアップ）
+
+### 失敗テストなし
+
+現在全てのテストが成功しています。
 
 ## 通信プロトコル
 
@@ -291,35 +340,46 @@ YADON_COUNT=6 ./start.sh [作業ディレクトリ]
 ./scripts/restart_daemons.sh
 ```
 
-### 1プロセス統合アーキテクチャ
+### GUIデーモン分離アーキテクチャ
 
-`start.sh` は `python3 -m yadon_agents.cli start` のラッパー。**1つのPyQt6プロセス**内で以下が起動する:
+`start.sh` は `uv run yadon start` のラッパー。**2つの独立したプロセス**で起動する:
 
+**CLI プロセス（ヤドキング・ヤドラン・ヤドン エージェント）:**
+1. **ASCIIアート表示** — ターミナルにヤドンをアスキーアート表示
+2. **既存プロセス停止** — 旧 GUIデーモン・CLIプロセスが起動していれば `pkill -f` で停止
+3. **ログディレクトリ確保** — `log_dir()` で ~/.yadon-agents/logs を初期化
+4. **GUI デーモンプロセス起動** — `subprocess.Popen(["python3", "-m", "yadon_agents.gui_daemon"])` で背景実行
+5. **ソケット待機** — `_wait_sockets()` で全ペット・ワーカー・マネージャーの起動完了を同期
+6. **コーディネーター（ヤドキング）起動** — `subprocess.run(["claude", "--model", "opus", ...])`。人間との対話、send_task.sh 呼び出し
+
+**GUI デーモンプロセス（ペット UI + エージェントスレッド）:**
 1. **QApplication + Qtイベントループ（メインスレッド）** — 全ウィジェット、全Qtシグナル・スロット、タイマーを駆動
 2. **ワーカーエージェント 1〜N（QThread × N）** — 各 AgentThread が YadonWorker を実行。ソケットサーバーループで ヤドランからのタスク受信
 3. **マネージャーエージェント 1個（QThread × 1）** — AgentThread が YadoranManager を実行。3フェーズ分解・並列dispatch・結果集約、ヤドキングからのタスク受信
-4. **コーディネーター（ヤドキング）（threading.Thread × 1）** — `subprocess.run(["claude", "--model", "opus", ...])`。人間との対話、send_task.sh 呼び出し
+4. **ペット UI（PyQt6 QWidget）** — YadonPet × N + YadoranPet。ドラッグ・アニメーション・吹き出し表示
+5. **起動時ウェルカムメッセージ** — 各ペットの吹き出しにランダムなウェルカムメッセージが表示される。ヤドンはテーマの `welcome_messages` から、ヤドランは `manager_welcome_messages` から選択
 
 **プロセス終了フロー:**
 - ヤドキング（opus）が終了 → Ctrl+C または exit コマンド
-- `cmd_start()` の `QApplication.quit()` で Qtイベントループ終了
-- 全 AgentThread・ペット ウィジェット自動停止
+- CLI プロセスの `cmd_start()` が終了検知 → GUIプロセスを `terminate()` 試行
+- 5秒タイムアウト待機後、応答なければ `gui_process.kill()` で強制停止
 - ソケット削除（`_cleanup_sockets()`）
-- プロセス完全終了
+- 両プロセス完全終了
 
-### PYTHONPATH
+### uv 依存管理
 
-`pip install -e .` の代わりに `PYTHONPATH` でパッケージを参照する。
-start.sh は自動で `PYTHONPATH=src/` を設定。
+`pip install -e .` の代わりに `uv` でパッケージ依存を管理する。
+`pyproject.toml` に定義された依存が自動解決され、`uv run` で実行時に適用される。
+start.sh は `uv run yadon start` のラッパーで、自動的に環境を構築・実行。
 
 ### PID管理の撤去
 
-旧アーキテクチャでは複数のデーモンプロセスを独立起動し、PID ファイルで管理していた。
+旧アーキテクチャでは複数のデーモンプロセスを PID ファイルで管理していた。
 
-**1プロセス統合への移行:**
-- ✅ **PID ファイル廃止** — 1プロセス内で全エージェント起動のため不要
+**現在のアーキテクチャ（GUIデーモン + CLI分離）:**
+- ✅ **PID ファイル廃止** — プロセスは `pkill -f` パターンマッチで停止。ファイルベース追跡不要
 - ✅ **log_dir()への一本化** — `log_dir()` は **ログディレクトリのみ**生成。PID追跡なし
-- ✅ **stop.sh の簡素化** — `pkill -f "yadon_agents.cli start"` で1プロセス停止。ソケット削除のみ
+- ✅ **stop.sh の更新** — `pkill -f "yadon_agents.gui_daemon"` と `pkill -f "yadon_agents.cli start"` で2つのプロセスを停止
 
 `infra/process.py` の `log_dir()`:
 ```python
@@ -330,23 +390,25 @@ def log_dir() -> Path:
     return base
 ```
 
-### stop.sh の簡素化
+### stop.sh の停止処理
 
-旧アーキテクチャ（複数デーモン）では複数の PID ファイル削除・複数プロセス pkill が必要だった。
+GUIデーモン分離後は、独立した2つのプロセス（`gui_daemon` と `cli start`）を停止する必要がある。
 
-**新アーキテクチャ（1プロセス統合）:**
+**現在のアーキテクチャ（GUIデーモン + CLI分離）:**
 ```bash
 #!/bin/bash
-# 1プロセスを停止 → ソケット削除のみ
+# GUIデーモン + CLIプロセスを両方停止 → ソケット削除
+pkill -f "yadon_agents.gui_daemon" 2>/dev/null || true
 pkill -f "yadon_agents.cli start" 2>/dev/null || true
 for SOCK in /tmp/yadon-agent-*.sock /tmp/yadon-pet-*.sock; do
     [ -S "$SOCK" ] && rm -f "$SOCK" || true
 done
 ```
 
-- プロセスが1つのみなので `pkill` は1回
-- PID ファイル削除処理なし
-- ソケット削除はクリーンアップ用（丁寧さのため、通常は自動削除される）
+**停止対象:**
+- `gui_daemon` — ペット UI・吹き出し表示を担当（PyQt6 GUI プロセス）
+- `cli start` — ヤドキング・ヤドラン・ヤドン エージェント実行（Python CLI プロセス）
+- **ソケット削除** — クリーンアップ用（通常は自動削除されるが、明示的に削除）
 
 ## scripts/
 
