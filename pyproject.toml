@@ -7,11 +7,6 @@ dependencies = [
     "PyQt6>=6.5.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-]
-
 [project.scripts]
 yadon = "yadon_agents.cli:main"
 
