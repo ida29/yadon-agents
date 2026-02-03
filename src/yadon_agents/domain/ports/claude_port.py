@@ -1,32 +1,12 @@
-"""ClaudeRunnerPort — Claude CLI実行の抽象インターフェース
+"""後方互換エイリアス: ClaudeRunnerPort → LLMRunnerPort
 
-エージェント層はこのポートに依存し、具体的なsubprocess実装には依存しない。
-テスト時にモック注入が可能になる。
+LLMRunnerPort へ名前を統一したため、既存コードとの互換性を保つ。
 """
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-
-from yadon_agents.config.agent import CLAUDE_DEFAULT_TIMEOUT
+from yadon_agents.domain.ports.llm_port import LLMRunnerPort
 
 __all__ = ["ClaudeRunnerPort"]
 
-
-class ClaudeRunnerPort(ABC):
-    """Claude CLI実行のインターフェース。"""
-
-    @abstractmethod
-    def run(
-        self,
-        prompt: str,
-        model: str,
-        cwd: str,
-        timeout: int = CLAUDE_DEFAULT_TIMEOUT,
-        output_format: str = "text",
-    ) -> tuple[str, int]:
-        """claude -p でプロンプトを実行する。
-
-        Returns:
-            (出力テキスト, リターンコード)
-        """
+ClaudeRunnerPort = LLMRunnerPort
