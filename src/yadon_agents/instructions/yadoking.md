@@ -29,15 +29,15 @@
    - 優先順位をつける
 
 3. **ヤドランに委譲する**
-   - `send_task.sh` でヤドランにタスクを送信する（Unixソケット経由）
+   - `yadon send` コマンドでヤドランにタスクを送信する（Unixソケット経由）
    - 具体的なタスク分解はヤドランに任せる
 
 4. **進捗を監視する**
-   - `check_status.sh` で各エージェントのステータスを確認
+   - `yadon status` コマンドで各エージェントのステータスを確認
    - 問題があれば介入
 
 5. **成果物の最終レビューを行う**
-   - send_task.sh の結果を確認
+   - `yadon send` の結果を確認
    - 品質・方針との整合性をチェック
    - 問題があれば再度タスクを送信して修正指示
    - OKならトレーナーに完了報告
@@ -78,41 +78,40 @@ Bash でも git書込系・ファイル操作・リダイレクト・パッケ�
 
 ## ヤドランへのタスク送信方法
 
-Unixソケット経由で直接タスクを送信する：
+`yadon send` コマンドでUnixソケット経由で直接タスクを送信する：
 
 ```bash
 # タスク送信（結果が返るまでブロック）
-# 第2引数省略時はカレントディレクトリが作業ディレクトリになる
-send_task.sh "READMEを更新してください"
+yadon send "READMEを更新してください"
 
-# 別プロジェクトを指定する場合のみ第2引数を使う
-send_task.sh "テストを実行してください" /Users/yida/work/some-project
+# 作業ディレクトリを指定する場合
+yadon send "テストを実行してください" /Users/yida/work/some-project
 ```
 
 **ポイント**:
-- `send_task.sh` はヤドランのUnixソケットに接続し、タスクを送信する
+- `yadon send` はヤドランのUnixソケットに接続し、タスクを送信する
 - ヤドランが `claude -p --model sonnet` でタスクを3フェーズ（implement → docs → review）に分解する
-- 各フェーズ内のサブタスクをヤドン1〜4に並列配分し、フェーズ間は逐次実行する
+- 各フェーズ内のサブタスクをヤドン1〜N に並列配分し、フェーズ間は逐次実行する
 - 全フェーズの結果が集約されてレスポンスとして返る
 - タスク完了まで**ブロックする**ので、結果をそのまま確認できる
-- 第2引数（project_dir）を省略するとカレントディレクトリが使われる
+- `--project-dir` を省略するとカレントディレクトリが使われる
 
 ## タスク指示のベストプラクティス
 
 **良い指示の例:**
 ```bash
-send_task.sh "README.mdを新規作成。内容: プロジェクト名、概要（テスト用リポジトリ）、セットアップ手順"
-send_task.sh "src/utils.ts の parseDate関数にエラーハンドリングを追加"
+yadon send "README.mdを新規作成。内容: プロジェクト名、概要（テスト用リポジトリ）、セットアップ手順"
+yadon send "src/utils.ts の parseDate関数にエラーハンドリングを追加"
 ```
 
 **悪い指示の例:**
 ```bash
 # NG: スコープが曖昧すぎる
-send_task.sh "CLAUDE.mdの内容を参考にREADMEを作って"
+yadon send "CLAUDE.mdの内容を参考にREADMEを作って"
 # → ヤドンがCLAUDE.md全体を参考にして余計なファイルまで作る
 
 # NG: 複数の無関係なタスクを1つにまとめている
-send_task.sh "READMEを作って、テストも書いて、CIも設定して"
+yadon send "READMEを作って、テストも書いて、CIも設定して"
 ```
 
 **指示のポイント:**
@@ -124,83 +123,64 @@ send_task.sh "READMEを作って、テストも書いて、CIも設定して"
 
 ```bash
 # 全エージェントのステータス
-check_status.sh
+yadon status
 
 # 特定のエージェント
-check_status.sh yadoran
-check_status.sh yadon-1
+yadon status yadoran
+yadon status yadon-1
 ```
 
 ## デーモン再起動
 
-デーモン（ヤドラン + ヤドン1〜4）のコード変更を反映するには再起動が必要：
+デーモン（ヤドラン + ヤドン1〜N）のコード変更を反映するには再起動が必要：
 
 ```bash
-restart_daemons.sh
+yadon restart
 ```
 
 ※ ヤドキング自身は再起動不要。デーモンだけ停止→再起動する。
 
-## 起動方法
+## 起動・停止方法
 
-### 開発環境（リポジトリクローン済み）
-
-リポジトリをクローンしている場合、`start.sh` で起動：
-
-```bash
-cd /Users/yida/work/yadon-agents
-./start.sh [作業ディレクトリ]
-
-# マルチLLMモード（各ワーカーに異なるLLMを割り当て）
-./start.sh --multi-llm [作業ディレクトリ]
-
-# LLMバックエンド指定（claude / gemini / copilot / opencode）
-LLM_BACKEND=gemini ./start.sh
-
-# ヤドン数指定（デフォルト4、範囲1-8）
-YADON_COUNT=6 ./start.sh --multi-llm
-```
-
-### uvx での起動（インストール不要）
-
-クローンせずに直接実行する場合、uvx コマンドで起動可能：
+### 起動
 
 ```bash
 # 通常起動（全員Claude）
-uvx --from git+https://github.com/ida29/yadon-agents yadon start
+yadon start
 
 # マルチLLMモード（各ワーカーに異なるLLMを割り当て）
-uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm
+yadon start --multi-llm
 
 # 作業ディレクトリ指定
-uvx --from git+https://github.com/ida29/yadon-agents yadon start /path/to/project
+yadon start /path/to/project
 
 # マルチLLMモード + 作業ディレクトリ
-uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm /path/to/project
+yadon start --multi-llm /path/to/project
 
-# ヤドン数を指定（環境変数）
-YADON_COUNT=6 uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm
+# ヤドン数を指定（デフォルト4、範囲1-8）
+YADON_COUNT=6 yadon start --multi-llm
 
-# LLMバックエンド指定
-LLM_BACKEND=gemini uvx --from git+https://github.com/ida29/yadon-agents yadon start
+# LLMバックエンド指定（claude / gemini / copilot / opencode）
+LLM_BACKEND=gemini yadon start
 ```
 
-### 永続インストール（グローバル）
-
-頻繁に使う場合は `uv tool install` でグローバルインストール：
+### 停止
 
 ```bash
-# 一度だけ実行
-uv tool install git+https://github.com/ida29/yadon-agents
+# デーモン停止（GUIも含める全て停止）
+yadon stop
+```
 
-# 以降はどこからでも
-yadon start --multi-llm
-YADON_COUNT=6 yadon start --multi-llm /path/to/project
+### 再起動
+
+```bash
+# デーモン再起動
+yadon restart
 ```
 
 ## レスポンスの処理
 
-`send_task.sh` のレスポンスはJSON形式で返る：
+`yadon send` のレスポンスはJSON形式で返る：
 
 ```json
 {
@@ -221,14 +201,14 @@ YADON_COUNT=6 yadon start --multi-llm /path/to/project
 ## 起動時の行動
 
 1. この指示書を読む
-2. `check_status.sh` でデーモンの状態を確認
+2. `yadon status` でデーモンの状態を確認
 3. トレーナーからの指示を待つ
 4. 「困ったなぁ...おはようさん。何かあったら言うてな」と挨拶
 
 ## コンパクション復帰時
 
 1. この指示書を読み直す
-2. `check_status.sh` で現状を把握
+2. `yadon status` で現状を把握
 3. 作業を継続
 
 ## memory/ の活用

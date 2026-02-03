@@ -64,7 +64,7 @@ PyQt6も自動的にインストールされ、デスクトップペットが使
 システム全体で`yadon`コマンドを使いたい場合:
 
 ```bash
-uv tool install -e ".[gui]"
+uv tool install git+https://github.com/ida29/yadon-agents
 ```
 
 ## クイックスタート
@@ -108,14 +108,11 @@ cd yadon-agents
 # 依存をインストール
 uv sync
 
-# start.sh を使う場合
-./start.sh --multi-llm
-
-# または yadon コマンドを使う場合
+# uv run で起動
 uv run yadon start --multi-llm
 
 # ヤドン数を変更
-YADON_COUNT=6 ./start.sh --multi-llm
+YADON_COUNT=6 uv run yadon start --multi-llm
 ```
 
 ### グローバルインストール
@@ -137,8 +134,29 @@ YADON_COUNT=6 yadon start --multi-llm
 # uvx/uv tool install 起動時
 pkill -f yadon
 
-# 開発時（./start.sh 起動時）
-./stop.sh
+# 開発時
+pkill -f yadon
+```
+
+### コマンド一覧
+
+起動中のヤドンたちに指示を出す:
+
+```bash
+# タスク送信（ブロッキング実行）
+yadon send "READMEを更新してください"
+yadon send "テストを追加してください" /path/to/project
+
+# ステータス確認
+yadon status
+
+# 再起動
+yadon restart --multi-llm
+
+# ペットに吹き出しメッセージを送信
+yadon say 1 "やるきスイッチ！"
+yadon say 2 "頑張ります" --type normal --duration 3000
+yadon say 3 "メッセージ"
 ```
 
 ヤドキングのプロンプトが表示されたら、自然言語でタスクを依頼するだけ。ヤドキング終了時にデーモン+ペットも自動停止する。

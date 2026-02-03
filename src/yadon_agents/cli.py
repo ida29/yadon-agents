@@ -148,11 +148,10 @@ def cmd_start(work_dir: str, multi_llm: bool = False) -> None:
 ---
 【システム情報】
 - 作業ディレクトリ: {work_dir}
-- send_task.sh: {PROJECT_ROOT}/scripts/send_task.sh
-- check_status.sh: {PROJECT_ROOT}/scripts/check_status.sh
-- restart_daemons.sh: {PROJECT_ROOT}/scripts/restart_daemons.sh
-- stop.sh: {PROJECT_ROOT}/stop.sh
-- スクリプトは上記の絶対パスで実行すること（./scripts/ は使わない）"""
+- タスク送信: yadon _send "タスク内容"
+- ステータス確認: yadon _status
+- デーモン再起動: yadon _restart
+- 全エージェント停止: yadon stop"""
 
         env = os.environ.copy()
         env["AGENT_ROLE"] = coordinator_role
@@ -317,7 +316,7 @@ def cmd_restart(work_dir: str, multi_llm: bool = False) -> None:
     cmd_start(work_dir, multi_llm=multi_llm)
 
 
-def cmd_say(number: int, message: str, bubble_type: str = "info", duration_ms: int = 3000) -> None:
+def cmd_say(number: int, message: str, bubble_type: str = "info", duration_ms: int = 5000) -> None:
     """ペットに吹き出しメッセージを送信"""
     theme = get_theme()
     prefix = theme.socket_prefix
@@ -353,16 +352,179 @@ def cmd_say(number: int, message: str, bubble_type: str = "info", duration_ms: i
         sys.exit(1)
 
 
+def cmd_internal_send(instruction: str, project_dir: str | None = None) -> None:
+    """【内部用】タスク送信 (JSON形式出力)
+
+    cmd_send() の JSON出力バージョン。
+    エージェント間通信で結果をJSON形式で返す際に使用。
+    """
+    theme = get_theme()
+    manager_name = theme.agent_role_manager
+    prefix = theme.socket_prefix
+    sock_path = agent_socket_path(manager_name, prefix=prefix)
+
+    result = {"success": False, "message": "", "data": None}
+
+    if not Path(sock_path).exists():
+        result["message"] = f"{manager_name}ソケットが見つかりません ({sock_path})"
+        print(json.dumps(result, ensure_ascii=False))
+        return
+
+    message = {
+        "type": "task",
+        "payload": {
+            "instruction": instruction,
+        }
+    }
+    if project_dir:
+        message["payload"]["project_dir"] = project_dir
+
+    try:
+        response = send_message(sock_path, message, timeout=600)
+        result["success"] = response.get("status") == "success"
+        result["data"] = response
+        print(json.dumps(result, ensure_ascii=False))
+    except socket.timeout:
+        result["message"] = f"{manager_name}からの応答がありません（タイムアウト）"
+        print(json.dumps(result, ensure_ascii=False))
+    except Exception as e:
+        result["message"] = str(e)
+        print(json.dumps(result, ensure_ascii=False))
+
+
+def cmd_internal_status(agent_name: str | None = None) -> None:
+    """【内部用】ステータス確認 (JSON形式出力)
+
+    cmd_status() の JSON出力バージョン。
+    エージェント間通信で結果をJSON形式で返す際に使用。
+    """
+    theme = get_theme()
+    manager_name = theme.agent_role_manager
+    worker_role = theme.agent_role_worker
+    prefix = theme.socket_prefix
+    yadon_count = get_yadon_count()
+
+    result = {"success": False, "message": "", "data": None}
+
+    if agent_name:
+        sock_path = agent_socket_path(agent_name, prefix=prefix)
+        agents_to_check = [agent_name]
+    else:
+        agents_to_check = [manager_name] + [f"{worker_role}-{n}" for n in range(1, yadon_count + 1)]
+        sock_path = agent_socket_path(manager_name, prefix=prefix)
+
+    message = {"type": "status"}
+
+    try:
+        response = send_message(sock_path, message, timeout=5)
+        result["success"] = True
+        result["data"] = response
+        print(json.dumps(result, ensure_ascii=False))
+    except socket.timeout:
+        result["message"] = "ステータス確認がタイムアウトしました"
+        print(json.dumps(result, ensure_ascii=False))
+    except Exception as e:
+        result["message"] = str(e)
+        print(json.dumps(result, ensure_ascii=False))
+
+
+def cmd_internal_restart() -> None:
+    """【内部用】デーモン再起動
+
+    パイプラインの内部処理用。
+    再起動完了メッセージを出力。
+    """
+    cmd_stop()
+    time.sleep(1)
+    cmd_start(str(Path.cwd()), multi_llm=False)
+    print("再起動が完了しました")
+
+
+def cmd_internal_say(number: int, message: str, bubble_type: str = "info", duration_ms: int = 5000) -> None:
+    """【内部用】ペット吹き出し表示
+
+    ペット番号に吹き出しメッセージを送信。
+    """
+    theme = get_theme()
+    prefix = theme.socket_prefix
+    sock_path = pet_socket_path(str(number), prefix=prefix)
+
+    if not Path(sock_path).exists():
+        # ペット未起動時は静かに終了
+        return
+
+    payload = {
+        "text": message,
+        "type": bubble_type,
+        "duration": duration_ms,
+    }
+
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect(sock_path)
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        sock.sendall(data)
+        sock.close()
+    except (socket.timeout, FileNotFoundError, ConnectionRefusedError):
+        # ペット未起動時は静かに終了
+        pass
+    except Exception:
+        pass
+
+
 def main() -> None:
     theme = get_theme()
     parser = argparse.ArgumentParser(description=f"{theme.display_name} CLI")
     subparsers = parser.add_subparsers(dest="command")
 
+    # start コマンド
     start_parser = subparsers.add_parser("start", help="全エージェント起動")
     start_parser.add_argument("work_dir", nargs="?", default=str(Path.cwd()), help="作業ディレクトリ")
     start_parser.add_argument("--multi-llm", action="store_true", help="マルチLLMモード有効（各ワーカーに異なるバックエンドを自動割り当て）")
 
+    # stop コマンド
     subparsers.add_parser("stop", help="全エージェント停止")
+
+    # send コマンド
+    send_parser = subparsers.add_parser("send", help="タスク送信")
+    send_parser.add_argument("instruction", help="実行するタスク指示")
+    send_parser.add_argument("--project-dir", help="作業ディレクトリ（オプション）")
+
+    # status コマンド
+    status_parser = subparsers.add_parser("status", help="ステータス確認")
+    status_parser.add_argument("agent_name", nargs="?", help="エージェント名（未指定時は全エージェント）")
+
+    # restart コマンド
+    restart_parser = subparsers.add_parser("restart", help="デーモン再起動")
+    restart_parser.add_argument("work_dir", nargs="?", default=str(Path.cwd()), help="作業ディレクトリ")
+    restart_parser.add_argument("--multi-llm", action="store_true", help="マルチLLMモード有効")
+
+    # say コマンド
+    say_parser = subparsers.add_parser("say", help="ペット吹き出し表示")
+    say_parser.add_argument("number", type=int, help="ペット番号（1-N）")
+    say_parser.add_argument("message", help="吹き出しメッセージ")
+    say_parser.add_argument("--type", default="info", help="吹き出しタイプ（デフォルト: info）")
+    say_parser.add_argument("--duration", type=int, default=5000, help="表示時間（ミリ秒、デフォルト: 5000）")
+
+    # 【内部用】_send コマンド
+    _send_parser = subparsers.add_parser("_send", help="【内部用】タスク送信 (JSON出力)")
+    _send_parser.add_argument("instruction", help="実行するタスク指示")
+    _send_parser.add_argument("--project-dir", help="作業ディレクトリ（オプション）")
+
+    # 【内部用】_status コマンド
+    _status_parser = subparsers.add_parser("_status", help="【内部用】ステータス確認 (JSON出力)")
+    _status_parser.add_argument("agent_name", nargs="?", help="エージェント名（未指定時は全エージェント）")
+
+    # 【内部用】_restart コマンド
+    subparsers.add_parser("_restart", help="【内部用】デーモン再起動")
+
+    # 【内部用】_say コマンド
+    _say_parser = subparsers.add_parser("_say", help="【内部用】ペット吹き出し表示")
+    _say_parser.add_argument("number", type=int, help="ペット番号（1-N）")
+    _say_parser.add_argument("message", help="吹き出しメッセージ")
+    _say_parser.add_argument("--type", default="info", help="吹き出しタイプ（デフォルト: info）")
+    _say_parser.add_argument("--duration", type=int, default=5000, help="表示時間（ミリ秒、デフォルト: 5000）")
 
     args = parser.parse_args()
 
@@ -377,6 +539,24 @@ def main() -> None:
         cmd_start(work_dir, multi_llm=multi_llm)
     elif args.command == "stop":
         cmd_stop()
+    elif args.command == "send":
+        cmd_send(args.instruction, project_dir=args.project_dir)
+    elif args.command == "status":
+        cmd_status(agent_name=args.agent_name)
+    elif args.command == "restart":
+        work_dir = str(Path(args.work_dir).resolve())
+        multi_llm = getattr(args, 'multi_llm', False)
+        cmd_restart(work_dir, multi_llm=multi_llm)
+    elif args.command == "say":
+        cmd_say(args.number, args.message, bubble_type=args.type, duration_ms=args.duration)
+    elif args.command == "_send":
+        cmd_internal_send(args.instruction, project_dir=args.project_dir)
+    elif args.command == "_status":
+        cmd_internal_status(agent_name=args.agent_name)
+    elif args.command == "_restart":
+        cmd_internal_restart()
+    elif args.command == "_say":
+        cmd_internal_say(args.number, args.message, bubble_type=args.type, duration_ms=args.duration)
     else:
         parser.print_help()
         sys.exit(1)
