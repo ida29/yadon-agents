@@ -13,7 +13,7 @@
   ▼
 ┌──────────────────┐
 │   ヤドキング       │  claude --model opus（ユーザーが起動）
-│                  │  send_task.sh / check_status.sh を実行
+│                  │  yadon send / yadon status を実行
 └──────┬───────────┘
        │ Unix socket: /tmp/yadon-agent-yadoran.sock
        ▼
@@ -46,12 +46,10 @@ GUIデーモン（ヤドラン + ヤドン1〜N のペットUI + エージェン
 ```
 yadon-agents/
 ├── pyproject.toml                    # パッケージ定義 + CLIエントリポイント
-├── start.sh                          # 起動ラッパー → uv run yadon start
-├── stop.sh                           # 停止スクリプト（gui_daemon + cli両方をpkill、ソケットクリーンアップ）
 ├── src/
 │   └── yadon_agents/
 │       ├── __init__.py
-│       ├── cli.py                    # Composition Root: yadon start/stop、GUIデーモン起動+ソケット待機+コーディネーター起動
+│       ├── cli.py                    # Composition Root: yadon start/stop/send/status/restart/say、GUIデーモン起動+ソケット待機+コーディネーター起動
 │       ├── ascii_art.py              # ターミナル用ヤドンASCIIアート表示（RGB→ANSI256色変換）
 │       ├── gui_daemon.py             # GUIデーモン（別プロセス）: PyQt6 QApplication + ペット1-N + マネージャー + エージェントスレッド
 │       │
@@ -92,11 +90,15 @@ yadon-agents/
 │           ├── pixel_data.py        # テーマ経由のスプライト委譲
 │           ├── yadoran_pixel_data.py # テーマ経由のスプライト委譲
 │           └── macos.py             # macOS window elevation (NSWindow)
-│       └── themes/                   # テーマ層（スプライト・スタイル管理）
-│           ├── __init__.py          # テーマファクトリ
-│           └── yadon/               # ヤドン標準テーマ
-│               ├── __init__.py      # YadonTheme定義
-│               └── sprites.py       # ヤドン ドット絵スプライトデータ
+│       ├── themes/                   # テーマ層（スプライト・スタイル管理）
+│       │   ├── __init__.py          # テーマファクトリ
+│       │   └── yadon/               # ヤドン標準テーマ
+│       │       ├── __init__.py      # YadonTheme定義
+│       │       └── sprites.py       # ヤドン ドット絵スプライトデータ
+│       └── instructions/             # 指示書（パッケージデータ）
+│           ├── yadoking.md          # ヤドキング指示書
+│           ├── yadoran.md           # ヤドラン指示書（3フェーズ分解）
+│           └── yadon.md             # ヤドン指示書
 │
 ├── tests/                            # テスト（pytest）
 │   ├── domain/
@@ -110,15 +112,6 @@ yadon-agents/
 │       ├── test_base.py             # BaseAgent テスト
 │       ├── test_manager.py          # YadoranManager テスト（_extract_json, _aggregate_results, decompose_task, handle_task統合テスト）
 │       └── test_worker.py           # YadonWorker テスト（handle_task, プロンプト構築）
-├── scripts/
-│   ├── send_task.sh                 # ヤドキング → ヤドランへタスク送信
-│   ├── check_status.sh              # エージェントのステータス照会
-│   ├── restart_daemons.sh           # 停止+再起動ラッパー（stop.sh && start.sh）
-│   └── pet_say.sh                   # ヤドンペットに吹き出し送信
-├── instructions/
-│   ├── yadoking.md                  # ヤドキング指示書
-│   ├── yadoran.md                   # ヤドラン指示書（3フェーズ分解）
-│   └── yadon.md                     # ヤドン指示書
 ├── memory/
 │   └── global_context.md            # ヤドキングの学習記録
 ├── logs/                             # ログファイル（自動生成）
@@ -212,7 +205,7 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 3. **ログディレクトリ確保** — `log_dir()` で統一ログ領域を初期化
 4. **GUIデーモンを別プロセスで起動** — `subprocess.Popen(["python3", "-m", "yadon_agents.gui_daemon"], ..., env=os.environ.copy())` で背景実行。**環境変数継承の確実化**: 親プロセス（CLI プロセス）の環境変数（`LLM_BACKEND`, `YADON_N_BACKEND`, `YADON_COUNT` 等）を GUIデーモンプロセスに確実に継承させるため、`env=os.environ.copy()` を明示的に渡す。未指定時はシステムデフォルト環境が使用される可能性があり、マルチLLMモードやバックエンド指定が GUIデーモンに反映されない問題が発生するため、明示的な指定が必須
 5. **ソケット待機** — `_wait_sockets()` で全ペット・ワーカー・マネージャーの起動完了を同期
-6. **コーディネーター（Opus）起動** — `subprocess.run(["claude", "--model", "opus", ...])` で人間インターフェース
+6. **コーディネーター（Opus）起動** — `subprocess.run(["claude", "--model", "opus", ...])` で人間インターフェース（`yadon send` コマンド実行可能）
 7. **終了処理** — コーディネーター終了時に GUIプロセスを `terminate()` → `kill()` で停止し、ソケット削除
 
 **特徴:**
@@ -383,7 +376,7 @@ python -m pytest tests/ -v
 ### 通信フロー（3フェーズ実行）
 
 1. 人間がヤドキングに依頼
-2. ヤドキングが `send_task.sh "タスク内容"` を実行（ブロック）
+2. ヤドキングが `yadon send "タスク内容"` を実行（ブロック）
 3. ヤドランがソケットで受信 → `claude -p --model sonnet` で3フェーズに分解
 4. **Phase 1 (implement)**: 実装サブタスクをヤドン1〜Nに `ThreadPoolExecutor` で並列送信 → 完了待ち
 5. **Phase 2 (docs)**: ドキュメント更新サブタスクをヤドンに並列送信 → 完了待ち
@@ -435,28 +428,101 @@ git clone https://github.com/ida29/yadon-agents
 cd yadon-agents
 
 # 起動
-./start.sh --multi-llm
-
-# または
 uv run yadon start --multi-llm
 ```
 
-### 停止
+## CLIコマンド
+
+yadon CLI には以下のサブコマンドが用意されています：
+
+### yadon start
+
+ヤドン・エージェント全体を起動します。
 
 ```bash
-# 手動停止（uvx/uv tool install 起動時）
-pkill -f yadon
+# 基本的な起動
+yadon start
 
-# 開発時（./start.sh 起動時）
-./stop.sh
+# マルチLLMモード有効（各ワーカーに異なるバックエンドを割り当て）
+yadon start --multi-llm
 
-# 停止+再起動（開発時）
-./scripts/restart_daemons.sh
+# 作業ディレクトリを指定
+yadon start /path/to/project
+
+# ワーカー数を指定（デフォルト4、範囲1-8）
+YADON_COUNT=6 yadon start --multi-llm
+
+# バックエンド指定
+LLM_BACKEND=gemini yadon start
+```
+
+### yadon stop
+
+ヤドン・エージェント全体を停止します。
+
+```bash
+yadon stop
+```
+
+### yadon send
+
+ヤドキング → ヤドランにタスクを送信します（ブロッキング）。
+
+```bash
+# シンプルなタスク送信（タイムアウト: 10分）
+yadon send "READMEを更新してください"
+
+# 作業ディレクトリを指定
+yadon send "テストを追加してください" /path/to/project
+
+# マルチLLMモード＋カスタムワーカー数での実行
+YADON_COUNT=6 yadon send "機能を実装してください"
+```
+
+### yadon status
+
+エージェントのステータスを照会します（タイムアウト: 5秒）。
+
+```bash
+# 全エージェント
+yadon status
+
+# 特定エージェント
+yadon status yadoran
+yadon status yadon-1
+yadon status yadon-2
+```
+
+### yadon restart
+
+エージェント全体を停止して再起動します。
+
+```bash
+# 基本的な再起動
+yadon restart
+
+# オプション付き再起動
+yadon restart --multi-llm /path/to/project
+```
+
+### yadon say
+
+ペットに吹き出しメッセージを送信します。
+
+```bash
+# ヤドン1に送信
+yadon say 1 "やるきスイッチ！"
+
+# ヤドン2に送信（オプション: バブルタイプ、表示時間）
+yadon say 2 "頑張ります" normal 3000
+
+# ペット未起動時は静かに終了
+yadon say 3 "メッセージ"
 ```
 
 ### GUIデーモン分離アーキテクチャ
 
-`start.sh` は `uv run yadon start` のラッパー。**2つの独立したプロセス**で起動する:
+`yadon start` を実行すると **2つの独立したプロセス**で起動します:
 
 **CLI プロセス（ヤドキング・ヤドラン・ヤドン エージェント）:**
 1. **ASCIIアート表示** — ターミナルにヤドンをアスキーアート表示
@@ -464,7 +530,7 @@ pkill -f yadon
 3. **ログディレクトリ確保** — `log_dir()` で ~/.yadon-agents/logs を初期化
 4. **GUI デーモンプロセス起動** — `subprocess.Popen(["python3", "-m", "yadon_agents.gui_daemon"])` で背景実行
 5. **ソケット待機** — `_wait_sockets()` で全ペット・ワーカー・マネージャーの起動完了を同期
-6. **コーディネーター（ヤドキング）起動** — `subprocess.run(["claude", "--model", "opus", ...])`。人間との対話、send_task.sh 呼び出し
+6. **コーディネーター（ヤドキング）起動** — `subprocess.run(["claude", "--model", "opus", ...])`。人間との対話、`yadon send` 呼び出し
 
 **GUI デーモンプロセス（ペット UI + エージェントスレッド）:**
 1. **QApplication + Qtイベントループ（メインスレッド）** — 全ウィジェット、全Qtシグナル・スロット、タイマーを駆動
@@ -498,7 +564,7 @@ start.sh は `uv run yadon start` のラッパーで、自動的に環境を構�
 **現在のアーキテクチャ（GUIデーモン + CLI分離）:**
 - ✅ **PID ファイル廃止** — プロセスは `pkill -f` パターンマッチで停止。ファイルベース追跡不要
 - ✅ **log_dir()への一本化** — `log_dir()` は **ログディレクトリのみ**生成。PID追跡なし
-- ✅ **stop.sh の更新** — `pkill -f "yadon_agents.gui_daemon"` と `pkill -f "yadon_agents.cli start"` で2つのプロセスを停止
+- ✅ **yadon stop の実装** — `pkill -f "yadon_agents.gui_daemon"` と `pkill -f "yadon_agents.cli start"` で2つのプロセスを停止
 
 `infra/process.py` の `log_dir()`:
 ```python
@@ -509,89 +575,19 @@ def log_dir() -> Path:
     return base
 ```
 
-### stop.sh の停止処理
+### yadon stop の停止処理
 
-GUIデーモン分離後は、独立した2つのプロセス（`gui_daemon` と `cli start`）を停止する必要がある。
+GUIデーモン分離後は、独立した2つのプロセス（`gui_daemon` と `cli start`）を停止する必要があります。
 
-**現在のアーキテクチャ（GUIデーモン + CLI分離）:**
-```bash
-#!/bin/bash
-# GUIデーモン + CLIプロセスを両方停止 → ソケット削除
-pkill -f "yadon_agents.gui_daemon" 2>/dev/null || true
-pkill -f "yadon_agents.cli start" 2>/dev/null || true
-for SOCK in /tmp/yadon-agent-*.sock /tmp/yadon-pet-*.sock; do
-    [ -S "$SOCK" ] && rm -f "$SOCK" || true
-done
-```
+**yadon stop が実行する処理:**
+1. GUIデーモンプロセスを停止 — `pkill -f "yadon_agents.gui_daemon"`
+2. CLIプロセスを停止 — `pkill -f "yadon_agents.cli start"`
+3. ソケットをクリーンアップ — `/tmp/yadon-agent-*.sock` と `/tmp/yadon-pet-*.sock` を削除
 
 **停止対象:**
 - `gui_daemon` — ペット UI・吹き出し表示を担当（PyQt6 GUI プロセス）
 - `cli start` — ヤドキング・ヤドラン・ヤドン エージェント実行（Python CLI プロセス）
 - **ソケット削除** — クリーンアップ用（通常は自動削除されるが、明示的に削除）
-
-## scripts/
-
-### send_task.sh
-ヤドキングがヤドランにタスクを送信するスクリプト。Unixソケット経由でJSON送受信。
-結果が返るまでブロックする（タイムアウト: 10分）。
-
-```bash
-send_task.sh <instruction> [project_dir]
-```
-
-### check_status.sh
-全エージェントまたは特定エージェントのステータスをUnixソケット経由で照会（タイムアウト: 5秒）。
-
-```bash
-check_status.sh              # 全エージェント
-check_status.sh yadoran      # ヤドランのみ
-check_status.sh yadon-1      # ヤドン1のみ
-```
-
-### restart_daemons.sh
-全体を停止して再起動するスクリプト。`stop.sh && start.sh "$@"` のラッパー。
-
-### pet_say.sh
-ペットに吹き出しメッセージを送信するヘルパー。ペットソケット (`/tmp/yadon-pet-N.sock`) 経由。
-ヤドン1〜Nに対応（番号指定）。ペット未起動時は静かに終了。
-
-```bash
-pet_say.sh <yadon_number> <message> [bubble_type] [duration_ms]
-```
-
-### git push（リモート送信）
-
-ローカルコミットをリモートリポジトリに送信する。
-
-```bash
-# 予行演習（実際には送信しない）
-git push --dry-run
-
-# 実行結果例：
-# To github.com:ida29/yadon-agents.git
-#    c2d477b..35847b7  main -> main
-```
-
-本番送信の場合：
-```bash
-# ローカルコミットをリモートに送信
-git push
-
-# 成功時の出力例：
-# Enumerating objects: 12, done.
-# Counting objects: 100% (12/12), done.
-# Delta compression using up to 12 threads
-# Compressing objects: 100% (6/6), done.
-# Writing objects: 100% (6/6), 1.23 KiB | 1.23 MiB/s, done.
-# Total 6 (delta 4), reused 0 (delta 0), pack-reused 0
-# To github.com:ida29/yadon-agents.git
-#    c2d477b..35847b7  main -> main
-```
-
-**参考:**
-- `git status` でリモートとの差分を確認
-- `git log --oneline -n 5` で最新コミット 5 つを確認
-- トラブル時は `git pull` で同期してから再度 `git push`
 
 ## LLMバックエンド切り替え
 
@@ -614,22 +610,22 @@ git push
 
 **デフォルト（Claude）で起動:**
 ```bash
-./start.sh [作業ディレクトリ]
+yadon start [作業ディレクトリ]
 ```
 
 **Gemini バックエンドで起動:**
 ```bash
-LLM_BACKEND=gemini ./start.sh [作業ディレクトリ]
+LLM_BACKEND=gemini yadon start [作業ディレクトリ]
 ```
 
 **Copilot バックエンドで起動:**
 ```bash
-LLM_BACKEND=copilot ./start.sh [作業ディレクトリ]
+LLM_BACKEND=copilot yadon start [作業ディレクトリ]
 ```
 
 **OpenCode バックエンドで起動:**
 ```bash
-LLM_BACKEND=opencode ./start.sh [作業ディレクトリ]
+LLM_BACKEND=opencode yadon start [作業ディレクトリ]
 ```
 
 ### モデル階層の割り当て
@@ -723,16 +719,16 @@ model = get_model_for_tier("coordinator")  # "opus" / "gemini-3.0-pro" / "gpt-5.
 **対話モード起動（LLM_BACKEND 反映）:**
 ```bash
 # デフォルト（Claude opus）
-./start.sh
+yadon start
 
 # Gemini Pro で起動（cli.py で自動的に build_interactive_command() が LLM_BACKEND を読み取り）
-LLM_BACKEND=gemini ./start.sh
+LLM_BACKEND=gemini yadon start
 
 # Copilot で起動
-LLM_BACKEND=copilot ./start.sh
+LLM_BACKEND=copilot yadon start
 
 # OpenCode で起動
-LLM_BACKEND=opencode ./start.sh
+LLM_BACKEND=opencode yadon start
 ```
 
 **ワーカーごとのバックエンド設定:**
@@ -741,13 +737,13 @@ LLM_BACKEND=opencode ./start.sh
 
 ```bash
 # ヤドン1はCopilot、ヤドン2はGemini、その他はデフォルト（Claude）で起動
-YADON_1_BACKEND=copilot YADON_2_BACKEND=gemini ./start.sh
+YADON_1_BACKEND=copilot YADON_2_BACKEND=gemini yadon start
 
 # ヤドン1〜4全てGeminiで起動
-LLM_BACKEND=gemini ./start.sh
+LLM_BACKEND=gemini yadon start
 
 # ヤドン1はCopilot、ヤドン2は Copilot、ヤドン3はGeminiで起動
-YADON_1_BACKEND=copilot YADON_2_BACKEND=copilot YADON_3_BACKEND=gemini ./start.sh
+YADON_1_BACKEND=copilot YADON_2_BACKEND=copilot YADON_3_BACKEND=gemini yadon start
 ```
 
 **バックエンド優先順位:**
@@ -758,7 +754,7 @@ YADON_1_BACKEND=copilot YADON_2_BACKEND=copilot YADON_3_BACKEND=gemini ./start.s
 **ヤドンの実行（バッチモード）:**
 ```bash
 # worker tier で Gemini バックエンドを使用
-LLM_BACKEND=gemini AGENT_ROLE=yadon ./start.sh
+LLM_BACKEND=gemini AGENT_ROLE=yadon yadon start
 ```
 
 ### 設計上の注意点
@@ -781,8 +777,8 @@ LLM_BACKEND=gemini AGENT_ROLE=yadon ./start.sh
 # uv run を使用
 uv run yadon start --multi-llm [作業ディレクトリ]
 
-# または start.sh 経由
-./start.sh --multi-llm [作業ディレクトリ]
+# または uvx で直接起動
+uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm [作業ディレクトリ]
 ```
 
 **デフォルト割り当て:**
@@ -801,13 +797,13 @@ uv run yadon start --multi-llm [作業ディレクトリ]
 
 ```bash
 # 4ワーカーでマルチLLMモード起動（ヤドン1: Copilot、ヤドン2: Gemini、ヤドン3: Claude、ヤドン4: OpenCode）
-./start.sh --multi-llm
+yadon start --multi-llm
 
 # ワーカー数6で起動（ヤドン5: Copilot ← ローテーション、ヤドン6: Gemini ← ローテーション）
-YADON_COUNT=6 ./start.sh --multi-llm
+YADON_COUNT=6 yadon start --multi-llm
 
 # ワーカー数8で起動（完全ローテーション）
-YADON_COUNT=8 ./start.sh --multi-llm /path/to/project
+YADON_COUNT=8 yadon start --multi-llm /path/to/project
 ```
 
 **実装詳細:**
@@ -843,28 +839,28 @@ YADON_COUNT=8 ./start.sh --multi-llm /path/to/project
 
 ```bash
 # ヤドン1だけは Copilot を強制、他は通常単一バックエンド（Claude）で起動
-YADON_1_BACKEND=copilot ./start.sh
+YADON_1_BACKEND=copilot yadon start
 # => Y1: Copilot, Y2-N: Claude（デフォルト）
 
 # ヤドン1を Gemini で強制し、その他はマルチLLMモードのローテーション【最優先かつマルチモード併用】
-YADON_1_BACKEND=gemini ./start.sh --multi-llm
+YADON_1_BACKEND=gemini yadon start --multi-llm
 # => Y1: Gemini (explicit), Y2: Gemini (multi-llm), Y3: Claude (multi-llm), Y4: OpenCode (multi-llm)
 # 注: Y1 は YADON_1_BACKEND=gemini が優先されるため Copilot にはならない（mod 4 = 1 では Copilot）
 
 # ワーカー1と3を固定し、その他はマルチLLMモード
-YADON_1_BACKEND=copilot YADON_3_BACKEND=claude ./start.sh --multi-llm
+YADON_1_BACKEND=copilot YADON_3_BACKEND=claude yadon start --multi-llm
 # => Y1: Copilot (explicit), Y2: Gemini (multi-llm), Y3: Claude (explicit), Y4: OpenCode (multi-llm)
 
 # グローバル Gemini で統一し、ヤドン2-3 のみ Copilot への明示的オーバーライド
-LLM_BACKEND=gemini YADON_2_BACKEND=copilot YADON_3_BACKEND=copilot ./start.sh
+LLM_BACKEND=gemini YADON_2_BACKEND=copilot YADON_3_BACKEND=copilot yadon start
 # => Y1-N: Gemini, ただし Y2,Y3: Copilot (explicit override)
 
 # グローバル Claude で統一（--multi-llm フラグなし）
-LLM_BACKEND=claude ./start.sh
+LLM_BACKEND=claude yadon start
 # => Y1-N: Claude（全体統一）
 
 # マルチLLMモード使用、ただしグローバルフォールバックを Copilot に設定
-LLM_BACKEND=copilot ./start.sh --multi-llm
+LLM_BACKEND=copilot yadon start --multi-llm
 # => Y1: Copilot (multi-llm), Y2: Gemini (multi-llm), Y3: Claude (multi-llm), Y4: OpenCode (multi-llm)
 # ワーカー5以上はローテーション継続、グローバルフォールバックは使用されない
 ```
@@ -880,7 +876,7 @@ LLM_BACKEND=copilot ./start.sh --multi-llm
 `--multi-llm` フラグなしで通常起動した場合、単一 `LLM_BACKEND` 環境変数で全ワーカーを制御（従来の動作）：
 ```bash
 # グローバル Gemini バックエンド（全ワーカー共通）
-LLM_BACKEND=gemini ./start.sh
+LLM_BACKEND=gemini yadon start
 ```
 
 ## 役割制御（PreToolUseフック）
