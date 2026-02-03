@@ -98,8 +98,8 @@ class TestYadonTheme:
     def test_instructions_paths(self):
         from yadon_agents.themes.yadon import build_theme
         theme = build_theme()
-        assert theme.instructions_coordinator == "instructions/yadoking.md"
-        assert theme.instructions_worker == "instructions/yadon.md"
+        assert theme.instructions_coordinator == "yadoking.md"
+        assert theme.instructions_worker == "yadon.md"
 
 
 class TestGetTheme:

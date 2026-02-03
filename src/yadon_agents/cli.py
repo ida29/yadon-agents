@@ -9,8 +9,11 @@
 from __future__ import annotations
 
 import argparse
+import importlib.resources
+import json
 import logging
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -25,6 +28,11 @@ from yadon_agents.config.agent import (
 from yadon_agents.config.llm import get_backend_name
 from yadon_agents.infra.claude_runner import SubprocessClaudeRunner
 from yadon_agents.infra.process import log_dir
+from yadon_agents.infra.protocol import (
+    agent_socket_path,
+    pet_socket_path,
+    send_message,
+)
 from yadon_agents.themes import get_theme
 
 logger = logging.getLogger(__name__)
@@ -128,10 +136,11 @@ def cmd_start(work_dir: str, multi_llm: bool = False) -> None:
         print()
 
         # 指示書読み込み
-        instructions_path = PROJECT_ROOT / theme.instructions_coordinator
-        if instructions_path.exists():
-            system_prompt = instructions_path.read_text()
-        else:
+        try:
+            files = importlib.resources.files("yadon_agents.instructions")
+            instruction_file = files / theme.instructions_coordinator
+            system_prompt = instruction_file.read_text(encoding="utf-8")
+        except (FileNotFoundError, TypeError):
             system_prompt = f"あなたは{theme.role_names.coordinator}です。"
 
         system_prompt += f"""
@@ -206,6 +215,142 @@ def cmd_stop() -> None:
 
     _cleanup_sockets(prefix=theme.socket_prefix)
     print("停止完了")
+
+
+def cmd_send(instruction: str, project_dir: str | None = None) -> None:
+    """タスクをヤドランに送信"""
+    theme = get_theme()
+    manager_name = theme.agent_role_manager
+    prefix = theme.socket_prefix
+    sock_path = agent_socket_path(manager_name, prefix=prefix)
+
+    if not Path(sock_path).exists():
+        print(f"\033[1;31mエラー\033[0m: {manager_name}ソケットが見つかりません ({sock_path})")
+        print("デーモンが起動していることを確認してください")
+        sys.exit(1)
+
+    message = {
+        "type": "task",
+        "payload": {
+            "instruction": instruction,
+        }
+    }
+    if project_dir:
+        message["payload"]["project_dir"] = project_dir
+
+    try:
+        print(f"タスク送信中 ({manager_name}へ)...", end="", flush=True)
+        response = send_message(sock_path, message, timeout=600)
+        print(" OK")
+
+        if response.get("status") == "success":
+            print(f"\033[0;32m✓ 成功\033[0m")
+            if "summary" in response.get("payload", {}):
+                print(f"  結果: {response['payload']['summary']}")
+        else:
+            print(f"\033[0;33m⚠ 部分エラー\033[0m")
+            if "output" in response.get("payload", {}):
+                print(f"  出力: {response['payload']['output']}")
+    except socket.timeout:
+        print()
+        print(f"\033[1;31mタイムアウト\033[0m: {manager_name}からの応答がありません")
+        sys.exit(1)
+    except Exception as e:
+        print()
+        print(f"\033[1;31mエラー\033[0m: {e}")
+        sys.exit(1)
+
+
+def cmd_status(agent_name: str | None = None) -> None:
+    """エージェントのステータスを確認"""
+    theme = get_theme()
+    manager_name = theme.agent_role_manager
+    worker_role = theme.agent_role_worker
+    prefix = theme.socket_prefix
+    yadon_count = get_yadon_count()
+
+    # agent_name が指定された場合、その1つだけをチェック
+    if agent_name:
+        sock_path = agent_socket_path(agent_name, prefix=prefix)
+        agents_to_check = [agent_name]
+    else:
+        # 全エージェント（マネージャー + ワーカー）をチェック
+        agents_to_check = [manager_name] + [f"{worker_role}-{n}" for n in range(1, yadon_count + 1)]
+        sock_path = agent_socket_path(manager_name, prefix=prefix)
+
+    message = {"type": "status"}
+
+    try:
+        print(f"ステータス確認中 ({', '.join(agents_to_check)})...", end="", flush=True)
+        response = send_message(sock_path, message, timeout=5)
+        print(" OK")
+        print()
+
+        # マネージャーのステータスを表示
+        print(f"{theme.role_names.manager}:")
+        print(f"  状態: {response.get('state', 'unknown')}")
+        if response.get("current_task"):
+            print(f"  現在のタスク: {response['current_task']}")
+
+        # ワーカーのステータスを表示
+        workers = response.get("workers", {})
+        if workers:
+            print(f"\n{theme.role_names.worker}:")
+            for worker_id, status in sorted(workers.items()):
+                print(f"  {worker_id}: {status}")
+    except socket.timeout:
+        print()
+        print(f"\033[1;31mタイムアウト\033[0m: ステータス確認がタイムアウトしました")
+        sys.exit(1)
+    except Exception as e:
+        print()
+        print(f"\033[1;31mエラー\033[0m: {e}")
+        sys.exit(1)
+
+
+def cmd_restart(work_dir: str, multi_llm: bool = False) -> None:
+    """デーモンを停止してから起動"""
+    print("デーモン再起動...")
+    print()
+    cmd_stop()
+    print()
+    cmd_start(work_dir, multi_llm=multi_llm)
+
+
+def cmd_say(number: int, message: str, bubble_type: str = "info", duration_ms: int = 3000) -> None:
+    """ペットに吹き出しメッセージを送信"""
+    theme = get_theme()
+    prefix = theme.socket_prefix
+    sock_path = pet_socket_path(str(number), prefix=prefix)
+
+    if not Path(sock_path).exists():
+        print(f"\033[1;33m警告\033[0m: ペットソケットが見つかりません ({sock_path})")
+        print("ペットが起動していないか、番号が間違っている可能性があります")
+        sys.exit(1)
+
+    payload = {
+        "text": message,
+        "type": bubble_type,
+        "duration": duration_ms,
+    }
+
+    try:
+        print(f"吹き出し送信中 ({theme.role_names.worker}{number}へ)...", end="", flush=True)
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect(sock_path)
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        sock.sendall(data)
+        sock.close()
+        print(" OK")
+    except socket.timeout:
+        print()
+        print(f"\033[1;31mタイムアウト\033[0m: ペットからの応答がありません")
+        sys.exit(1)
+    except Exception as e:
+        print()
+        print(f"\033[1;31mエラー\033[0m: {e}")
+        sys.exit(1)
 
 
 def main() -> None:

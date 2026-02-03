@@ -17,6 +17,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/yadon_agents"]
 
+[tool.setuptools.package-data]
+yadon_agents.instructions = ["*.md"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
