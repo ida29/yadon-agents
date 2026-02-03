@@ -22,6 +22,8 @@ from yadon_agents.config.agent import (
     SOCKET_WAIT_TIMEOUT,
     get_yadon_count,
 )
+from yadon_agents.config.llm import get_backend_name
+from yadon_agents.infra.claude_runner import SubprocessClaudeRunner
 from yadon_agents.infra.process import log_dir
 from yadon_agents.themes import get_theme
 
@@ -131,12 +133,16 @@ def cmd_start(work_dir: str) -> None:
 
         # コーディネーター起動（ブロッキング）
         try:
+            runner = SubprocessClaudeRunner()
+            cmd = runner.build_interactive_command(model_tier="coordinator")
+            cmd.extend(["--append-system-prompt", system_prompt])
+
+            # Claude専用フラグを追加
+            if get_backend_name() == "claude":
+                cmd.append("--dangerously-skip-permissions")
+
             result = subprocess.run(
-                [
-                    "claude", "--model", "opus",
-                    "--dangerously-skip-permissions",
-                    "--append-system-prompt", system_prompt,
-                ],
+                cmd,
                 cwd=work_dir,
                 env=env,
             )
