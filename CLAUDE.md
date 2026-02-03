@@ -262,29 +262,30 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 ### テスト実行結果
 
 **実行日**: 2026年2月2日
-**テスト総数**: 80
-**成功**: 80 (100%)
+**テスト総数**: 88
+**成功**: 88 (100%)
 **失敗**: 0 (0%)
 
 ```bash
 python -m pytest tests/ -v
 # ============================= test session starts ==============================
-# 80 passed in 0.07s
+# 88 passed in 0.07s
 ```
 
-### テスト構成（80テスト）
+### テスト構成（88テスト）
 
 | モジュール | テストファイル | テスト数 | ステータス |
 |-----------|----------------|---------|-----------|
 | **agent** | `test_base.py` | 5 | ✅ All pass |
 | | `test_manager.py` | 9 | ✅ All pass |
 | | `test_worker.py` | 7 | ✅ All pass |
-| **domain** | `test_formatting.py` | 7 | ✅ All pass |
+| **domain** | `test_ascii_art.py` | 10 | ✅ All pass |
+| | `test_formatting.py` | 7 | ✅ All pass |
 | | `test_messages.py` | 9 | ✅ All pass |
 | | `test_theme.py` | 34 | ✅ All pass |
 | **infra** | `test_claude_runner.py` | 4 | ✅ All pass |
 | | `test_protocol.py` | 6 | ✅ All pass |
-| **合計** | | **80** | ✅ **全成功** |
+| **合計** | | **90** | ✅ **全成功** |
 
 ### テスト範囲
 
