@@ -25,7 +25,7 @@ class TestSubprocessClaudeRunner:
         with patch("subprocess.run", return_value=mock_result) as mock_run:
             output, returncode = runner.run(
                 prompt="test prompt",
-                model="haiku",
+                model_tier="worker",
                 cwd="/tmp",
                 timeout=30,
             )
@@ -46,7 +46,7 @@ class TestSubprocessClaudeRunner:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("cmd", 60)):
             output, returncode = runner.run(
                 prompt="test prompt",
-                model="sonnet",
+                model_tier="manager",
                 cwd="/tmp",
                 timeout=60,
             )
@@ -64,7 +64,7 @@ class TestSubprocessClaudeRunner:
         with patch("subprocess.run", side_effect=test_error):
             output, returncode = runner.run(
                 prompt="test prompt",
-                model="opus",
+                model_tier="coordinator",
                 cwd="/tmp",
                 timeout=30,
             )
@@ -84,7 +84,7 @@ class TestSubprocessClaudeRunner:
         with patch("subprocess.run", return_value=mock_result) as mock_run:
             runner.run(
                 prompt="test",
-                model="haiku",
+                model_tier="worker",
                 cwd="/tmp",
                 timeout=30,
                 output_format="json",

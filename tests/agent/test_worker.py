@@ -7,12 +7,12 @@ from typing import Any
 import pytest
 
 from yadon_agents.agent.worker import YadonWorker
-from yadon_agents.domain.ports.claude_port import ClaudeRunnerPort
+from yadon_agents.domain.ports.llm_port import LLMRunnerPort
 from yadon_agents.themes import _reset_cache
 
 
-class FakeClaudeRunner(ClaudeRunnerPort):
-    """テスト用のClaudeRunner実装。戻り値を制御可能。"""
+class FakeClaudeRunner(LLMRunnerPort):
+    """テスト用のLLMRunner実装。戻り値を制御可能。"""
 
     def __init__(self, output: str = "", returncode: int = 0):
         self.output = output
@@ -22,20 +22,28 @@ class FakeClaudeRunner(ClaudeRunnerPort):
     def run(
         self,
         prompt: str,
-        model: str,
-        cwd: str,
-        timeout: int = 600,
-        output_format: str = "text",
+        model_tier: str,
+        cwd: str | None = None,
+        timeout: float = 600,
+        output_format: str | None = None,
     ) -> tuple[str, int]:
         """引数を記録してから、固定の戻り値を返す。"""
         self.last_run_kwargs = {
             "prompt": prompt,
-            "model": model,
+            "model_tier": model_tier,
             "cwd": cwd,
             "timeout": timeout,
             "output_format": output_format,
         }
         return (self.output, self.returncode)
+
+    def build_interactive_command(
+        self,
+        model_tier: str,
+        system_prompt_path: str | None = None,
+    ) -> list[str]:
+        """テスト用の実装。実際には使用されない。"""
+        return ["claude", "--model", model_tier]
 
 
 class TestYadonWorker:
@@ -142,8 +150,8 @@ class TestYadonWorker:
         # ワーカー番号が含まれていることを確認
         assert "3" in prompt or "number" in prompt.lower()
 
-        # モデルが haiku であることを確認
-        assert fake_runner.last_run_kwargs["model"] == "haiku"
+        # モデルティアが worker であることを確認
+        assert fake_runner.last_run_kwargs["model_tier"] == "worker"
 
         # cwd が指定されたパスであること
         assert fake_runner.last_run_kwargs["cwd"] == sock_dir
@@ -163,8 +171,8 @@ class TestYadonWorker:
             },
         })
 
-        # モデルが haiku
-        assert fake_runner.last_run_kwargs["model"] == "haiku"
+        # モデルティアが worker
+        assert fake_runner.last_run_kwargs["model_tier"] == "worker"
         # cwd がペイロードで指定されたパス
         assert fake_runner.last_run_kwargs["cwd"] == custom_project_dir
 

@@ -11,11 +11,11 @@ from yadon_agents.agent.manager import (
     _aggregate_results,
     _extract_json,
 )
-from yadon_agents.domain.ports.claude_port import ClaudeRunnerPort
+from yadon_agents.domain.ports.llm_port import LLMRunnerPort
 
 
-class FakeClaudeRunner(ClaudeRunnerPort):
-    """テスト用の Claude ランナーモック"""
+class FakeClaudeRunner(LLMRunnerPort):
+    """テスト用の LLM ランナーモック"""
 
     def __init__(self, output: str = "", return_code: int = 0):
         self.output = output
@@ -24,12 +24,20 @@ class FakeClaudeRunner(ClaudeRunnerPort):
     def run(
         self,
         prompt: str,
-        model: str,
-        cwd: str,
-        timeout: int = 30,
-        output_format: str = "text",
+        model_tier: str,
+        cwd: str | None = None,
+        timeout: float = 30,
+        output_format: str | None = None,
     ) -> tuple[str, int]:
         return self.output, self.return_code
+
+    def build_interactive_command(
+        self,
+        model_tier: str,
+        system_prompt_path: str | None = None,
+    ) -> list[str]:
+        """テスト用の実装。実際には使用されない。"""
+        return ["claude", "--model", model_tier]
 
 
 class TestAggregateResults:
