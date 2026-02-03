@@ -559,6 +559,7 @@ git push
 | バックエンド | コマンド | Coordinator | Manager | Worker | 説明 |
 |---|---|---|---|---|---|
 | **claude** (デフォルト) | `claude` | opus | sonnet | haiku | Anthropic Claude CLI |
+| **claude-opus** | `claude` | opus | opus | opus | Anthropic Claude CLI (All Opus) |
 | **gemini** | `gemini` | gemini-3.0-pro | gemini-3.0-flash | gemini-3.0-flash | Google Gemini CLI |
 | **copilot** | `copilot` | gpt-5.2 | gpt-5.2-mini | gpt-5.2-mini | Microsoft Copilot CLI |
 | **opencode** | `opencode` | kimi/kimi-latest | kimi/kimi-latest | kimi/kimi-latest | OpenCode Framework |
@@ -746,7 +747,7 @@ uv run yadon start --multi-llm [作業ディレクトリ]
 |---------|-----------|------|--------|------|
 | ヤドン1 | Copilot | worker | gpt-5.2-mini | 高速応答・軽量処理 |
 | ヤドン2 | Gemini | worker | gemini-3.0-flash | 多言語対応・拡張性 |
-| ヤドン3 | Claude | worker | haiku | 安定性・一貫性 |
+| ヤドン3 | Claude | worker | opus | 安定性・一貫性 |
 | ヤドン4 | OpenCode | worker | kimi/kimi-latest | 専門領域最適化 |
 | ヤドン5以上 | ローテーション | worker | (上記4つの繰り返し) | バランス分散 |
 

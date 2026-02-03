@@ -63,7 +63,7 @@ def cmd_start(work_dir: str, multi_llm: bool = False) -> None:
 
     # マルチLLMモード時、バックエンドローテーションで環境変数を設定
     # ただし、既に YADON_N_BACKEND が設定されている場合はスキップ
-    backend_rotation = ['copilot', 'gemini', 'claude', 'opencode']
+    backend_rotation = ['copilot', 'gemini', 'claude-opus', 'opencode']
     if multi_llm:
         for i in range(1, yadon_count + 1):
             env_var = f'YADON_{i}_BACKEND'

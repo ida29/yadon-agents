@@ -92,6 +92,17 @@ BACKEND_CONFIGS: dict[str, LLMBackendConfig] = {
         flags={"use_pipe": True},
         batch_subcommand="run -q",
     ),
+    "claude-opus": LLMBackendConfig(
+        name="claude-opus",
+        command="claude",
+        models=LLMModelConfig(
+            coordinator="opus",
+            manager="opus",
+            worker="opus",
+        ),
+        flags={"use_pipe": True},
+        batch_subcommand=None,
+    ),
 }
 
 
