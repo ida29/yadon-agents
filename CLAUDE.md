@@ -63,7 +63,8 @@ yadon-agents/
 │       │   ├── theme.py             # ThemeConfig frozen dataclass（テーマ全設定）
 │       │   └── ports/               # ポート定義（抽象インターフェース）
 │       │       ├── agent_port.py    # AgentPort ABC, BubbleCallback型
-│       │       └── claude_port.py   # ClaudeRunnerPort ABC
+│       │       ├── llm_port.py      # LLMRunnerPort ABC（マルチLLMバックエンド対応）
+│       │       └── claude_port.py   # 後方互換エイリアス（ClaudeRunnerPort → LLMRunnerPort）
 │       │
 │       ├── agent/                    # アプリケーション層（エージェントロジック）
 │       │   ├── base.py              # BaseAgent(AgentPort): ソケットサーバーループ + on_bubble callback + try-finallyリソース管理
@@ -72,12 +73,13 @@ yadon-agents/
 │       │
 │       ├── infra/                    # インフラ層（I/Oアダプター）
 │       │   ├── protocol.py          # Unixソケット通信（JSON over Unix socket, SHUT_WR EOF）
-│       │   ├── claude_runner.py     # SubprocessClaudeRunner(ClaudeRunnerPort): claude -p 実行
+│       │   ├── claude_runner.py     # SubprocessClaudeRunner(LLMRunnerPort): マルチLLM CLI実行
 │       │   └── process.py           # log_dir()（ログディレクトリ生成のみ、PID管理なし）
 │       │
 │       ├── config/                   # 設定
 │       │   ├── agent.py             # メッセージ定数、バリアント、やるきスイッチ、get_yadon_count()
-│       │   └── ui.py                # ピクセルサイズ、フォント、色、アニメーション設定
+│       │   ├── ui.py                # ピクセルサイズ、フォント、色、アニメーション設定
+│       │   └── llm.py               # LLMバックエンド設定（BACKEND_CONFIGS, get_backend_config等）
 │       │
 │       ├── gui/                      # GUI層（PyQt6、オプション依存）
 │           ├── base_pet.py          # BasePet(QWidget): 共通ペットロジック
@@ -133,7 +135,8 @@ yadon-agents/
 `domain/ports/` に抽象インターフェースを定義し、コンストラクタ注入で具体実装を差し替え可能にする。
 
 - `AgentPort` — エージェントの公開インターフェース。`BaseAgent` が実装
-- `ClaudeRunnerPort` — Claude CLI実行の抽象。`SubprocessClaudeRunner` が実装
+- `LLMRunnerPort` — LLM CLI実行の抽象。`SubprocessClaudeRunner` が実装
+- `ClaudeRunnerPort` — 後方互換エイリアス（`LLMRunnerPort` への参照）
 
 `YadonWorker` / `YadoranManager` は `claude_runner: ClaudeRunnerPort | None = None` を受け取り、未指定時は `SubprocessClaudeRunner()` をデフォルト生成する。テスト時にはモックを注入可能。
 
@@ -265,34 +268,36 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 ### テスト実行結果
 
 **実行日**: 2026年2月2日
-**テスト総数**: 88
-**成功**: 88 (100%)
+**テスト総数**: 99
+**成功**: 99 (100%)
 **失敗**: 0 (0%)
 
 ```bash
 python -m pytest tests/ -v
 # ============================= test session starts ==============================
-# 88 passed in 0.07s
+# 99 passed in 0.08s
 ```
 
-### テスト構成（88テスト）
+### テスト構成（99テスト）
 
 | モジュール | テストファイル | テスト数 | ステータス |
 |-----------|----------------|---------|-----------|
 | **agent** | `test_base.py` | 5 | ✅ All pass |
 | | `test_manager.py` | 9 | ✅ All pass |
 | | `test_worker.py` | 7 | ✅ All pass |
+| **config** | `test_llm.py` | 9 | ✅ All pass |
 | **domain** | `test_ascii_art.py` | 10 | ✅ All pass |
 | | `test_formatting.py` | 7 | ✅ All pass |
 | | `test_messages.py` | 9 | ✅ All pass |
 | | `test_theme.py` | 34 | ✅ All pass |
 | **infra** | `test_claude_runner.py` | 4 | ✅ All pass |
 | | `test_protocol.py` | 6 | ✅ All pass |
-| **合計** | | **90** | ✅ **全成功** |
+| **合計** | | **99** | ✅ **全成功** |
 
 ### テスト範囲
 
 - **Agent Layer**: ソケット通信、メッセージハンドリング、タスク分解、結果集約、ワーカータスク実行
+- **Config Layer**: LLMバックエンド設定、モデル階層、環境変数フォールバック
 - **Domain Layer**: テキスト要約、メッセージ型、ThemeConfig、スプライトビルダー、後方互換性
 - **Infra Layer**: Claude CLIランナー（subprocess実行、タイムアウト）、Unixソケット通信（作成・送受信・クリーンアップ）
 
@@ -541,6 +546,182 @@ git push
 - `git status` でリモートとの差分を確認
 - `git log --oneline -n 5` で最新コミット 5 つを確認
 - トラブル時は `git pull` で同期してから再度 `git push`
+
+## LLMバックエンド切り替え
+
+### 概要
+
+複数のLLMバックエンド（Claude、Gemini、Copilot、OpenCode）をサポートし、環境変数 `LLM_BACKEND` で実行時に切り替え可能。
+エージェント階層（ヤドキング/ヤドラン/ヤドン）に応じたモデル階層（coordinator/manager/worker）の最適なモデルを自動選択。
+
+### 対応バックエンド
+
+| バックエンド | コマンド | Coordinator | Manager | Worker | 説明 |
+|---|---|---|---|---|---|
+| **claude** (デフォルト) | `claude` | opus | sonnet | haiku | Anthropic Claude CLI |
+| **gemini** | `gemini` | gemini-3.0-pro | gemini-3.0-flash | gemini-3.0-flash | Google Gemini CLI |
+| **copilot** | `copilot` | gpt-5.2 | gpt-5.2-mini | gpt-5.2-mini | Microsoft Copilot CLI |
+| **opencode** | `opencode` | kimi/kimi-latest | kimi/kimi-latest | kimi/kimi-latest | OpenCode Framework |
+
+### 使用方法
+
+**デフォルト（Claude）で起動:**
+```bash
+./start.sh [作業ディレクトリ]
+```
+
+**Gemini バックエンドで起動:**
+```bash
+LLM_BACKEND=gemini ./start.sh [作業ディレクトリ]
+```
+
+**Copilot バックエンドで起動:**
+```bash
+LLM_BACKEND=copilot ./start.sh [作業ディレクトリ]
+```
+
+**OpenCode バックエンドで起動:**
+```bash
+LLM_BACKEND=opencode ./start.sh [作業ディレクトリ]
+```
+
+### モデル階層の割り当て
+
+各バックエンドは以下の3つのモデル階層を定義：
+
+**coordinator（ヤドキング）**
+- 戦略統括、最終レビュー、人間とのインターフェース
+- 最も高性能なモデルを使用（例: Claude opus、Gemini Pro、Copilot gpt-5.2）
+
+**manager（ヤドラン）**
+- タスクを3フェーズに分解、ヤドンへの並列配分、結果集約
+- バランスの取れたモデルを使用（例: Claude sonnet、Gemini Flash、Copilot gpt-5.2-mini）
+
+**worker（ヤドン）**
+- 実作業（コーディング、テスト、ドキュメント、レビュー等）
+- 軽量・高速なモデルを使用（例: Claude haiku、Gemini Flash、Copilot gpt-5.2-mini）
+
+### config/llm.py の設計方針
+
+`config/llm.py` は LLMバックエンド設定を一元管理するモジュール。
+
+**主要コンポーネント:**
+
+1. **LLMModelConfig**
+   - `coordinator`, `manager`, `worker` の3つのモデル名を格納
+   - frozen dataclass で不変性を保証
+
+2. **LLMBackendConfig**
+   - バックエンド名、実行コマンド、モデル設定、追加フラグを格納
+   - `batch_subcommand` でバッチ実行時のサブコマンドを指定可能（例: "run -q"）
+
+3. **BACKEND_CONFIGS**
+   - 対応バックエンド全ての設定を辞書で管理
+   - キーは小文字バックエンド名（"claude", "gemini", "copilot", "opencode"）
+
+4. **グローバル関数**
+   - `get_backend_name()` — 環境変数 `LLM_BACKEND` からバックエンド名を取得（デフォルト: "claude"）
+   - `get_backend_config()` — 現在のバックエンド設定オブジェクトを取得
+   - `get_model_for_tier(tier)` — 指定 tier ("coordinator"/"manager"/"worker") に対応するモデル名を取得
+
+### claude_runner.py の実装
+
+`infra/claude_runner.py` は `LLMRunnerPort` の実装で、複数LLMバックエンドをサポート：
+
+**主要メソッド:**
+
+1. **run() — バッチモード実行**
+   - プロンプト実行（`LLM_BACKEND` 反映）
+   - バッチモードで `-p` フラグを自動追加（Claude/Gemini/Copilot）
+   - `batch_subcommand` に基づくサブコマンド追加対応
+   - タイムアウト・エラーハンドリング完備
+
+2. **build_interactive_command() — 対話モードコマンド構築**
+   - `LLM_BACKEND` 環境変数に基づいて動的に対話モードコマンドを構築
+   - `--model` に対応 tier のモデル名を自動設定
+   - `--system` フラグによるシステムプロンプト指定対応
+   - バックエンド固有フラグ（`--dangerously-skip-permissions` 等）を自動追加
+
+**コマンド構築例:**
+- Claude (デフォルト): `claude --model opus`
+- Gemini: `gemini --model gemini-2.5-pro`
+- Copilot: `copilot --model gpt-4o`
+
+### 後方互換性（domain/ports/claude_port.py）
+
+`domain/ports/claude_port.py` は後方互換エイリアスモジュール：
+```python
+ClaudeRunnerPort = LLMRunnerPort
+```
+
+既存コードが `ClaudeRunnerPort` を参照している場合も、新しい `LLMRunnerPort` に統一名前付けされた。
+
+### 実装例
+
+**環境変数の確認:**
+```python
+from yadon_agents.config.llm import get_backend_name, get_backend_config, get_model_for_tier
+
+# 現在のバックエンド名を取得
+backend_name = get_backend_name()  # "claude" / "gemini" / "copilot" / "opencode"
+
+# バックエンド設定を取得
+config = get_backend_config()
+print(config.command)  # "claude" / "gemini" / "copilot" / "opencode"
+
+# 指定 tier のモデル名を取得
+model = get_model_for_tier("coordinator")  # "opus" / "gemini-3.0-pro" / "gpt-5.2" / "kimi/kimi-latest"
+```
+
+**対話モード起動（LLM_BACKEND 反映）:**
+```bash
+# デフォルト（Claude opus）
+./start.sh
+
+# Gemini Pro で起動（cli.py で自動的に build_interactive_command() が LLM_BACKEND を読み取り）
+LLM_BACKEND=gemini ./start.sh
+
+# Copilot で起動
+LLM_BACKEND=copilot ./start.sh
+
+# OpenCode で起動
+LLM_BACKEND=opencode ./start.sh
+```
+
+**ワーカーごとのバックエンド設定:**
+
+`YADON_1_BACKEND`, `YADON_2_BACKEND`, ... `YADON_N_BACKEND` 環境変数を使用して、各ワーカー（ヤドン1〜N）のバックエンドを個別に指定可能。未指定時はグローバル `LLM_BACKEND` 環境変数の値、さらに未設定時はデフォルト（claude）にフォールバック。
+
+```bash
+# ヤドン1はCopilot、ヤドン2はGemini、その他はデフォルト（Claude）で起動
+YADON_1_BACKEND=copilot YADON_2_BACKEND=gemini ./start.sh
+
+# ヤドン1〜4全てGeminiで起動
+LLM_BACKEND=gemini ./start.sh
+
+# ヤドン1はCopilot、ヤドン2は Copilot、ヤドン3はGeminiで起動
+YADON_1_BACKEND=copilot YADON_2_BACKEND=copilot YADON_3_BACKEND=gemini ./start.sh
+```
+
+**バックエンド優先順位:**
+1. `YADON_N_BACKEND` 環境変数（ワーカー個別指定、最優先）
+2. `LLM_BACKEND` 環境変数（グローバル指定）
+3. デフォルト値：`claude`（両方未設定時）
+
+**ヤドンの実行（バッチモード）:**
+```bash
+# worker tier で Gemini バックエンドを使用
+LLM_BACKEND=gemini AGENT_ROLE=yadon ./start.sh
+```
+
+### 設計上の注意点
+
+- **不正なバックエンド指定** — `LLM_BACKEND` が無効な値の場合は自動的に "claude" にフォールバック
+- **Port & Adapter** — エージェント層は `LLMRunnerPort` に依存し、具体的なLLM実装には依存しない
+- **テスト** — モックを `LLMRunnerPort` に注入することで、各バックエンドをシミュレート可能
+- **コマンド形式の統一** — 全バックエンド共通インターフェース（`--model`, `--system` フラグ等）で統一
+- **拡張性** — 新バックエンドの追加は `BACKEND_CONFIGS` に新しい設定を追加するだけで実現可能
+- **対話モード対応** — `cli.py:137` で `build_interactive_command()` が動的にバックエンドに応じたコマンドを構築。環境変数 `LLM_BACKEND` がそのまま反映される
 
 ## 役割制御（PreToolUseフック）
 
