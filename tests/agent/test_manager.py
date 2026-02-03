@@ -1,5 +1,7 @@
 """YadoranManager — _aggregate_results と decompose_task のテスト"""
 
+from __future__ import annotations
+
 import json
 from typing import Any
 from unittest.mock import MagicMock
