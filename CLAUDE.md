@@ -144,9 +144,12 @@ yadon-agents/
 
 **リソース管理の設計判断：**
 - `serve_forever()` が try-finally で一元管理し、どの経路（正常終了・エラー・stop呼び出し）でも確実にリソース解放
+  - **try ブロック**: サーバーソケット作成（`proto.create_server_socket()`）→ `running = True` → メインループ（`while self.running`）
+  - **finally ブロック**: サーバーソケットのクローズ（`self.server_sock.close()`）と ファイルの削除（`proto.cleanup_socket()`）を一本化
+  - **効果**: キープアライブされたファイルディスクリプタやソケットファイルが確実にクリーンアップされ、リスタート時の競合を防止
 - `serve_forever()` 内の while ループで `SOCKET_ACCEPT_TIMEOUT` を短く（デフォルト1秒）設定し、`running` フラグの変更を即座に検知可能に
 - `stop()` メソッドは `self.running = False` を設定するのみで責務を明確化。ソケットクローズ・ファイル削除は finally ブロックで一本化
-- この分離により、エージェント側から stop 呼び出ししても、メインループ終了時には必ず finally ブロックが実行され、リソークが確実に解放される
+- この分離により、エージェント側から stop 呼び出ししても、メインループ終了時には必ず finally ブロックが実行され、リソースが確実に解放される
 
 ### AgentThread
 
