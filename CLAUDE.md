@@ -210,7 +210,7 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 1. **ヤドン ASCIIアート表示** — 起動時にターミナルに ASCII アート を表示
 2. **既存プロセス停止** — 旧プロセスが起動している場合は `pkill -f` で停止
 3. **ログディレクトリ確保** — `log_dir()` で統一ログ領域を初期化
-4. **GUIデーモンを別プロセスで起動** — `subprocess.Popen()` で `python3 -m yadon_agents.gui_daemon` を背景実行
+4. **GUIデーモンを別プロセスで起動** — `subprocess.Popen(["python3", "-m", "yadon_agents.gui_daemon"], ..., env=os.environ.copy())` で背景実行。**環境変数継承の確実化**: 親プロセス（CLI プロセス）の環境変数（`LLM_BACKEND`, `YADON_N_BACKEND`, `YADON_COUNT` 等）を GUIデーモンプロセスに確実に継承させるため、`env=os.environ.copy()` を明示的に渡す。未指定時はシステムデフォルト環境が使用される可能性があり、マルチLLMモードやバックエンド指定が GUIデーモンに反映されない問題が発生するため、明示的な指定が必須
 5. **ソケット待機** — `_wait_sockets()` で全ペット・ワーカー・マネージャーの起動完了を同期
 6. **コーディネーター（Opus）起動** — `subprocess.run(["claude", "--model", "opus", ...])` で人間インターフェース
 7. **終了処理** — コーディネーター終了時に GUIプロセスを `terminate()` → `kill()` で停止し、ソケット削除
@@ -722,6 +722,119 @@ LLM_BACKEND=gemini AGENT_ROLE=yadon ./start.sh
 - **コマンド形式の統一** — 全バックエンド共通インターフェース（`--model`, `--system` フラグ等）で統一
 - **拡張性** — 新バックエンドの追加は `BACKEND_CONFIGS` に新しい設定を追加するだけで実現可能
 - **対話モード対応** — `cli.py:137` で `build_interactive_command()` が動的にバックエンドに応じたコマンドを構築。環境変数 `LLM_BACKEND` がそのまま反映される
+
+### マルチLLMモード
+
+複数のLLMバックエンドを同時に活用する「マルチLLMモード」では、各ワーカーに異なるバックエンド・モデルを割り当てて並列実行することで、モデルの特性を組み合わせた最適化が可能です。
+
+**起動方法:**
+
+`--multi-llm` フラグで有効化：
+```bash
+# uv run を使用
+uv run yadon start --multi-llm [作業ディレクトリ]
+
+# または start.sh 経由
+./start.sh --multi-llm [作業ディレクトリ]
+```
+
+**デフォルト割り当て:**
+
+`--multi-llm` フラグ使用時、各ワーカーには以下の優先度でバックエンドが割り当てられます：
+
+| ワーカー | バックエンド | Tier | モデル | 用途 |
+|---------|-----------|------|--------|------|
+| ヤドン1 | Copilot | worker | gpt-5.2-mini | 高速応答・軽量処理 |
+| ヤドン2 | Gemini | worker | gemini-3.0-flash | 多言語対応・拡張性 |
+| ヤドン3 | Claude | worker | haiku | 安定性・一貫性 |
+| ヤドン4 | OpenCode | worker | kimi/kimi-latest | 専門領域最適化 |
+| ヤドン5以上 | ローテーション | worker | (上記4つの繰り返し) | バランス分散 |
+
+**具体的な使用例:**
+
+```bash
+# 4ワーカーでマルチLLMモード起動（ヤドン1: Copilot、ヤドン2: Gemini、ヤドン3: Claude、ヤドン4: OpenCode）
+./start.sh --multi-llm
+
+# ワーカー数6で起動（ヤドン5: Copilot ← ローテーション、ヤドン6: Gemini ← ローテーション）
+YADON_COUNT=6 ./start.sh --multi-llm
+
+# ワーカー数8で起動（完全ローテーション）
+YADON_COUNT=8 ./start.sh --multi-llm /path/to/project
+```
+
+**実装詳細:**
+
+マルチLLMモード有効時の環境変数設定フロー（`cli.py` で自動実行）：
+1. `--multi-llm` フラグを検知
+2. 各ワーカー番号 N に対して `YADON_N_BACKEND` 環境変数を自動設定：
+   - `N % 4 == 1` → `copilot`
+   - `N % 4 == 2` → `gemini`
+   - `N % 4 == 3` → `claude`
+   - `N % 4 == 0` → `opencode`
+3. 明示的な `YADON_N_BACKEND` 指定がある場合は、その値を優先（オーバーライド）
+4. GUI デーモン起動時に各ワーカーに対応するバックエンドが反映される
+
+**優先度順序（バックエンド選択のルール）:**
+
+各ワーカーのバックエンド選択は、以下の優先度で決定されます：
+
+```
+1. YADON_N_BACKEND 環境変数（ワーカー個別指定）【最優先】
+   └─ 明示的に指定された場合、この値が必ず採用される
+2. --multi-llm フラグによる自動割り当て（モードで自動設定）
+   └─ ワーカー番号の mod 4 によるローテーション（N % 4 で決定）
+3. グローバル LLM_BACKEND 環境変数（全体的な指定）
+   └─ --multi-llm フラグが未指定時に全ワーカーに適用
+4. デフォルト値：claude（未指定時）
+   └─ 上記すべて未設定時のフォールバック
+```
+
+**重要**: `YADON_N_BACKEND` が明示的に指定されている場合、`--multi-llm` による自動割り当てを **オーバーライド** します。
+
+**複合運用例:**
+
+```bash
+# ヤドン1だけは Copilot を強制、他は通常単一バックエンド（Claude）で起動
+YADON_1_BACKEND=copilot ./start.sh
+# => Y1: Copilot, Y2-N: Claude（デフォルト）
+
+# ヤドン1を Gemini で強制し、その他はマルチLLMモードのローテーション【最優先かつマルチモード併用】
+YADON_1_BACKEND=gemini ./start.sh --multi-llm
+# => Y1: Gemini (explicit), Y2: Gemini (multi-llm), Y3: Claude (multi-llm), Y4: OpenCode (multi-llm)
+# 注: Y1 は YADON_1_BACKEND=gemini が優先されるため Copilot にはならない（mod 4 = 1 では Copilot）
+
+# ワーカー1と3を固定し、その他はマルチLLMモード
+YADON_1_BACKEND=copilot YADON_3_BACKEND=claude ./start.sh --multi-llm
+# => Y1: Copilot (explicit), Y2: Gemini (multi-llm), Y3: Claude (explicit), Y4: OpenCode (multi-llm)
+
+# グローバル Gemini で統一し、ヤドン2-3 のみ Copilot への明示的オーバーライド
+LLM_BACKEND=gemini YADON_2_BACKEND=copilot YADON_3_BACKEND=copilot ./start.sh
+# => Y1-N: Gemini, ただし Y2,Y3: Copilot (explicit override)
+
+# グローバル Claude で統一（--multi-llm フラグなし）
+LLM_BACKEND=claude ./start.sh
+# => Y1-N: Claude（全体統一）
+
+# マルチLLMモード使用、ただしグローバルフォールバックを Copilot に設定
+LLM_BACKEND=copilot ./start.sh --multi-llm
+# => Y1: Copilot (multi-llm), Y2: Gemini (multi-llm), Y3: Claude (multi-llm), Y4: OpenCode (multi-llm)
+# ワーカー5以上はローテーション継続、グローバルフォールバックは使用されない
+```
+
+**パフォーマンス考慮:**
+
+- 各ワーカーが異なるバックエンドを使用するため、**初回起動時** は複数のLLMサービスへの接続確認が行われ、通常より起動時間が増加
+- **並列実行時** には各モデルの特性を活かした分散処理が可能（例: Copilot の高速処理 + Claude の安定性）
+- 5ワーカー以上の場合、ローテーション方式により 4 種バックエンドを循環利用することで、リソース使用の均衡を取得
+
+**無効化:**
+
+`--multi-llm` フラグなしで通常起動した場合、単一 `LLM_BACKEND` 環境変数で全ワーカーを制御（従来の動作）：
+```bash
+# グローバル Gemini バックエンド（全ワーカー共通）
+LLM_BACKEND=gemini ./start.sh
+```
 
 ## 役割制御（PreToolUseフック）
 

@@ -52,7 +52,7 @@ def _cleanup_sockets(prefix: str = "yadon") -> None:
                 pass
 
 
-def cmd_start(work_dir: str) -> None:
+def cmd_start(work_dir: str, multi_llm: bool = False) -> None:
     """全エージェント起動（GUIは別プロセス）"""
     from yadon_agents.ascii_art import show_yadon_ascii
 
@@ -61,12 +61,29 @@ def cmd_start(work_dir: str) -> None:
     coordinator_role = theme.agent_role_coordinator
     prefix = theme.socket_prefix
 
+    # マルチLLMモード時、バックエンドローテーションで環境変数を設定
+    # ただし、既に YADON_N_BACKEND が設定されている場合はスキップ
+    backend_rotation = ['copilot', 'gemini', 'claude', 'opencode']
+    if multi_llm:
+        for i in range(1, yadon_count + 1):
+            env_var = f'YADON_{i}_BACKEND'
+            if env_var not in os.environ:  # 既に設定されている場合はスキップ
+                backend = backend_rotation[(i - 1) % len(backend_rotation)]
+                os.environ[env_var] = backend
+
     # ヤドンのドット絵を表示
     show_yadon_ascii()
 
     print(f"\033[0;36m{theme.display_name} 起動中...\033[0m")
     print("   困ったなぁ...でもやるか...")
     print(f"   {theme.role_names.worker}数: {yadon_count}")
+    if multi_llm:
+        print(f"   \033[0;35m【マルチLLMモード有効】\033[0m")
+        for i in range(1, yadon_count + 1):
+            env_var = f'YADON_{i}_BACKEND'
+            # 既に設定されている場合はそれを使用、未設定の場合はローテーション割り当て
+            backend = os.environ.get(env_var) or backend_rotation[(i - 1) % len(backend_rotation)]
+            print(f"     {theme.role_names.worker}{i}: {backend}")
     print()
 
     # 既存プロセスの停止
@@ -86,6 +103,7 @@ def cmd_start(work_dir: str) -> None:
             stdout=subprocess.DEVNULL,
             stderr=log_file,
             start_new_session=True,  # 完全に独立したプロセスグループ
+            env=os.environ.copy(),
         )
         print(f"  GUI PID: {gui_process.pid}")
 
@@ -197,6 +215,7 @@ def main() -> None:
 
     start_parser = subparsers.add_parser("start", help="全エージェント起動")
     start_parser.add_argument("work_dir", nargs="?", default=str(Path.cwd()), help="作業ディレクトリ")
+    start_parser.add_argument("--multi-llm", action="store_true", help="マルチLLMモード有効（各ワーカーに異なるバックエンドを自動割り当て）")
 
     subparsers.add_parser("stop", help="全エージェント停止")
 
@@ -209,7 +228,8 @@ def main() -> None:
 
     if args.command == "start":
         work_dir = str(Path(args.work_dir).resolve())
-        cmd_start(work_dir)
+        multi_llm = getattr(args, 'multi_llm', False)
+        cmd_start(work_dir, multi_llm=multi_llm)
     elif args.command == "stop":
         cmd_stop()
     else:
