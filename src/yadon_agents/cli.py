@@ -69,15 +69,22 @@ def cmd_start(work_dir: str, multi_llm: bool = False) -> None:
     coordinator_role = theme.agent_role_coordinator
     prefix = theme.socket_prefix
 
-    # マルチLLMモード時、バックエンドローテーションで環境変数を設定
-    # ただし、既に YADON_N_BACKEND が設定されている場合はスキップ
+    # ワーカーバックエンド環境変数の処理
     backend_rotation = ['copilot', 'gemini', 'claude-opus', 'opencode']
     if multi_llm:
+        # マルチLLMモード: ローテーションで環境変数を設定
+        # ただし、既に YADON_N_BACKEND が設定されている場合はスキップ
         for i in range(1, yadon_count + 1):
             env_var = f'YADON_{i}_BACKEND'
             if env_var not in os.environ:  # 既に設定されている場合はスキップ
                 backend = backend_rotation[(i - 1) % len(backend_rotation)]
                 os.environ[env_var] = backend
+    else:
+        # 通常モード: YADON_N_BACKEND 環境変数をクリア（親シェルの残留値を無効化）
+        for i in range(1, yadon_count + 1):
+            env_var = f'YADON_{i}_BACKEND'
+            if env_var in os.environ:
+                del os.environ[env_var]
 
     # ヤドンのドット絵を表示
     show_yadon_ascii()
