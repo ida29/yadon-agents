@@ -55,9 +55,9 @@ class SpeechBubble(QWidget):
 
         metrics = self.fontMetrics()
 
-        # 80文字幅ベースで最大幅を算出
-        max_bubble_width = metrics.horizontalAdvance('M' * 80) + BUBBLE_PADDING * 2 + 20
-        bubble_width = max_bubble_width  # 常に80文字幅固定
+        # 40文字幅ベースで最大幅を算出
+        max_bubble_width = metrics.horizontalAdvance('M' * 40) + BUBBLE_PADDING * 2 + 20
+        bubble_width = max_bubble_width  # 常に40文字幅固定
 
         content_max_width = max_bubble_width - BUBBLE_PADDING * 2 - 20
 
@@ -101,7 +101,7 @@ class SpeechBubble(QWidget):
                     bubble_y = parent_y + (parent_height - self.height()) // 2
 
         bubble_x = max(10, min(bubble_x, screen.width() - self.width() - 10))
-        bubble_y = max(10, min(bubble_y, screen.height() - self.height() - 10))
+        bubble_y = max(10, min(bubble_y, screen.height() - self.height() - 50))
 
         self.move(bubble_x, bubble_y)
 
