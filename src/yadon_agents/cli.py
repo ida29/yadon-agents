@@ -223,50 +223,6 @@ def cmd_stop() -> None:
     print("停止完了")
 
 
-def cmd_send(instruction: str, project_dir: str | None = None) -> None:
-    """タスクをヤドランに送信"""
-    theme = get_theme()
-    manager_name = theme.agent_role_manager
-    prefix = theme.socket_prefix
-    sock_path = agent_socket_path(manager_name, prefix=prefix)
-
-    if not Path(sock_path).exists():
-        print(f"\033[1;31mエラー\033[0m: {manager_name}ソケットが見つかりません ({sock_path})")
-        print("デーモンが起動していることを確認してください")
-        sys.exit(1)
-
-    message = {
-        "type": "task",
-        "payload": {
-            "instruction": instruction,
-        }
-    }
-    if project_dir:
-        message["payload"]["project_dir"] = project_dir
-
-    try:
-        print(f"タスク送信中 ({manager_name}へ)...", end="", flush=True)
-        response = send_message(sock_path, message, timeout=600)
-        print(" OK")
-
-        if response.get("status") == "success":
-            print(f"\033[0;32m✓ 成功\033[0m")
-            if "summary" in response.get("payload", {}):
-                print(f"  結果: {response['payload']['summary']}")
-        else:
-            print(f"\033[0;33m⚠ 部分エラー\033[0m")
-            if "output" in response.get("payload", {}):
-                print(f"  出力: {response['payload']['output']}")
-    except socket.timeout:
-        print()
-        print(f"\033[1;31mタイムアウト\033[0m: {manager_name}からの応答がありません")
-        sys.exit(1)
-    except Exception as e:
-        print()
-        print(f"\033[1;31mエラー\033[0m: {e}")
-        sys.exit(1)
-
-
 def cmd_status(agent_name: str | None = None) -> None:
     """エージェントのステータスを確認"""
     theme = get_theme()
@@ -494,11 +450,6 @@ def main() -> None:
     # stop コマンド
     subparsers.add_parser("stop", help="全エージェント停止")
 
-    # send コマンド
-    send_parser = subparsers.add_parser("send", help="タスク送信")
-    send_parser.add_argument("instruction", help="実行するタスク指示")
-    send_parser.add_argument("--project-dir", help="作業ディレクトリ（オプション）")
-
     # status コマンド
     status_parser = subparsers.add_parser("status", help="ステータス確認")
     status_parser.add_argument("agent_name", nargs="?", help="エージェント名（未指定時は全エージェント）")
@@ -550,8 +501,6 @@ def main() -> None:
         cmd_start(work_dir, multi_llm=multi_llm)
     elif args.command == "stop":
         cmd_stop()
-    elif args.command == "send":
-        cmd_send(args.instruction, project_dir=args.project_dir)
     elif args.command == "status":
         cmd_status(agent_name=args.agent_name)
     elif args.command == "restart":

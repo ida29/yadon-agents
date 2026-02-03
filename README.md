@@ -143,10 +143,6 @@ pkill -f yadon
 起動中のヤドンたちに指示を出す:
 
 ```bash
-# タスク送信（ブロッキング実行）
-yadon send "READMEを更新してください"
-yadon send "テストを追加してください" /path/to/project
-
 # ステータス確認
 yadon status
 

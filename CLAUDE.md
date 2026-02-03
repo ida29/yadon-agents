@@ -13,7 +13,7 @@
   ▼
 ┌──────────────────┐
 │   ヤドキング       │  claude --model opus（ユーザーが起動）
-│                  │  yadon send / yadon status を実行
+│                  │  yadon status を実行
 └──────┬───────────┘
        │ Unix socket: /tmp/yadon-agent-yadoran.sock
        ▼
@@ -35,7 +35,7 @@ GUIデーモン（ヤドラン + ヤドン1〜N のペットUI + エージェン
 
 | ポケモン | モデル | 動作モード | 役割 |
 |----------|--------|-----------|------|
-| ヤドキング | opus | 対話型 (`claude --model opus`) | 戦略統括、最終レビュー、人間とのIF |
+| ヤドキング | opus | 対話型 (`claude --model opus`) | 戦略統括、最終レビュー、ダイレクト対話 |
 | ヤドラン | sonnet | バックグラウンド (`claude -p`) | タスクを3フェーズに分解、ヤドンへの並列配分、結果集約 |
 | ヤドン×N | haiku | バックグラウンド (`claude -p`) | 実作業（コーディング、テスト、ドキュメント、レビュー等） |
 
@@ -49,7 +49,7 @@ yadon-agents/
 ├── src/
 │   └── yadon_agents/
 │       ├── __init__.py
-│       ├── cli.py                    # Composition Root: yadon start/stop/send/status/restart/say、GUIデーモン起動+ソケット待機+コーディネーター起動
+│       ├── cli.py                    # Composition Root: yadon start/stop/status/restart/say、GUIデーモン起動+ソケット待機+コーディネーター起動
 │       ├── commands.py               # CLIサブコマンド実装（yadon _send/_status/_restart/_say等、内部用）
 │       ├── ascii_art.py              # ターミナル用ヤドンASCIIアート表示（RGB→ANSI256色変換）
 │       ├── gui_daemon.py             # GUIデーモン（別プロセス）: PyQt6 QApplication + ペット1-N + マネージャー + エージェントスレッド
@@ -127,7 +127,7 @@ yadon-agents/
 
 ### commands.py — CLIサブコマンド実装
 
-`commands.py` は全CLIサブコマンド（`yadon start`, `stop`, `send`, `status`, `restart`, `say`）と内部用コマンド（`_send`, `_status`, `_restart`, `_say`）を Pythonモジュール化したもの。
+`commands.py` は全CLIサブコマンド（`yadon start`, `stop`, `status`, `restart`, `say`）と内部用コマンド（`_send`, `_status`, `_restart`, `_say`）を Pythonモジュール化したもの。
 
 **設計判断：**
 - **シェルスクリプト廃止** — 旧アーキテクチャは `scripts/send_task.sh`, `check_status.sh`, `restart_daemons.sh`, `pet_say.sh` など複数のシェルスクリプトで管理していたが、Pythonモジュール化することで：
@@ -224,7 +224,7 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 3. **ログディレクトリ確保** — `log_dir()` で統一ログ領域を初期化
 4. **GUIデーモンを別プロセスで起動** — `subprocess.Popen(["python3", "-m", "yadon_agents.gui_daemon"], ..., env=os.environ.copy())` で背景実行。**環境変数継承の確実化**: 親プロセス（CLI プロセス）の環境変数（`LLM_BACKEND`, `YADON_N_BACKEND`, `YADON_COUNT` 等）を GUIデーモンプロセスに確実に継承させるため、`env=os.environ.copy()` を明示的に渡す。未指定時はシステムデフォルト環境が使用される可能性があり、マルチLLMモードやバックエンド指定が GUIデーモンに反映されない問題が発生するため、明示的な指定が必須
 5. **ソケット待機** — `_wait_sockets()` で全ペット・ワーカー・マネージャーの起動完了を同期
-6. **コーディネーター（Opus）起動** — `subprocess.run(["claude", "--model", "opus", ...])` で人間インターフェース（`yadon send` コマンド実行可能）
+6. **コーディネーター（Opus）起動** — `subprocess.run(["claude", "--model", "opus", ...])` で人間インターフェース起動
 7. **終了処理** — コーディネーター終了時に GUIプロセスを `terminate()` → `kill()` で停止し、ソケット削除
 
 **特徴:**
@@ -395,7 +395,7 @@ python -m pytest tests/ -v
 ### 通信フロー（3フェーズ実行）
 
 1. 人間がヤドキングに依頼
-2. ヤドキングが `yadon send "タスク内容"` を実行（ブロック）
+2. ヤドキングがヤドランにソケットで送信（ブロック）
 3. ヤドランがソケットで受信 → `claude -p --model sonnet` で3フェーズに分解
 4. **Phase 1 (implement)**: 実装サブタスクをヤドン1〜Nに `ThreadPoolExecutor` で並列送信 → 完了待ち
 5. **Phase 2 (docs)**: ドキュメント更新サブタスクをヤドンに並列送信 → 完了待ち
@@ -504,21 +504,6 @@ LLM_BACKEND=gemini yadon start
 yadon stop
 ```
 
-### yadon send
-
-ヤドキング → ヤドランにタスクを送信します（ブロッキング）。
-
-```bash
-# シンプルなタスク送信（タイムアウト: 10分）
-yadon send "READMEを更新してください"
-
-# 作業ディレクトリを指定
-yadon send "テストを追加してください" /path/to/project
-
-# マルチLLMモード＋カスタムワーカー数での実行
-YADON_COUNT=6 yadon send "機能を実装してください"
-```
-
 ### yadon status
 
 エージェントのステータスを照会します（タイムアウト: 5秒）。
@@ -612,7 +597,7 @@ yadon _say 1 "メッセージ" normal 3000
 3. **ログディレクトリ確保** — `log_dir()` で ~/.yadon-agents/logs を初期化
 4. **GUI デーモンプロセス起動** — `subprocess.Popen(["python3", "-m", "yadon_agents.gui_daemon"])` で背景実行
 5. **ソケット待機** — `_wait_sockets()` で全ペット・ワーカー・マネージャーの起動完了を同期
-6. **コーディネーター（ヤドキング）起動** — `subprocess.run(["claude", "--model", "opus", ...])`。人間との対話、`yadon send` 呼び出し
+6. **コーディネーター（ヤドキング）起動** — `subprocess.run(["claude", "--model", "opus", ...])`。人間との対話
 
 **GUI デーモンプロセス（ペット UI + エージェントスレッド）:**
 1. **QApplication + Qtイベントループ（メインスレッド）** — 全ウィジェット、全Qtシグナル・スロット、タイマーを駆動
