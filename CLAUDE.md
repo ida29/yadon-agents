@@ -394,23 +394,63 @@ python -m pytest tests/ -v
 
 ## 起動方法
 
+### uvx で起動（推奨）
+
+インストール不要で即実行:
+
 ```bash
-# 全エージェント一括起動（1プロセスで全ペット+ヤドキング）
-./start.sh [作業ディレクトリ]
+# 通常起動（全員Claude）
+uvx --from git+https://github.com/ida29/yadon-agents yadon start
+
+# マルチLLMモード（各ワーカーに異なるLLMを割り当て）
+uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm
+
+# 作業ディレクトリ指定
+uvx --from git+https://github.com/ida29/yadon-agents yadon start /path/to/project --multi-llm
 
 # ヤドン数を指定して起動（デフォルト4、範囲1-8）
-YADON_COUNT=6 ./start.sh [作業ディレクトリ]
+YADON_COUNT=6 uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm
+```
 
-# マルチLLMモード起動（各ワーカーに異なるLLMバックエンドを割り当て）
+### 永続インストール
+
+頻繁に使う場合は uv tool install でグローバルインストール:
+
+```bash
+# 一度だけ実行
+uv tool install git+https://github.com/ida29/yadon-agents
+
+# 以降はどこからでも
+yadon start --multi-llm
+YADON_COUNT=6 yadon start --multi-llm
+```
+
+### 開発時の起動
+
+リポジトリをクローンして開発する場合:
+
+```bash
+# クローン
+git clone https://github.com/ida29/yadon-agents
+cd yadon-agents
+
+# 起動
 ./start.sh --multi-llm
 
-# 作業ディレクトリ指定 + マルチLLMモード
-./start.sh /path/to/project --multi-llm
+# または
+uv run yadon start --multi-llm
+```
 
-# 停止（ヤドキング終了時に自動停止、手動停止も可）
+### 停止
+
+```bash
+# 手動停止（uvx/uv tool install 起動時）
+pkill -f yadon
+
+# 開発時（./start.sh 起動時）
 ./stop.sh
 
-# 停止+再起動
+# 停止+再起動（開発時）
 ./scripts/restart_daemons.sh
 ```
 

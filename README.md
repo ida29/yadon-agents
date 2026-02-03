@@ -67,42 +67,81 @@ PyQt6も自動的にインストールされ、デスクトップペットが使
 uv tool install -e ".[gui]"
 ```
 
+## クイックスタート
+
+インストール不要で即座に起動:
+
+```bash
+# インストール不要で即起動
+uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm
+```
+
+詳細は「起動」セクションを参照。
+
 ## 起動
 
-### start.sh を使う場合
+### uvx で起動（推奨）
+
+インストール不要で即実行:
 
 ```bash
-./start.sh
+# 通常起動（全員Claude）
+uvx --from git+https://github.com/ida29/yadon-agents yadon start
+
+# マルチLLMモード（各ワーカーに異なるLLMを割り当て）
+uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm
+
+# 作業ディレクトリ指定
+uvx --from git+https://github.com/ida29/yadon-agents yadon start /path/to/project --multi-llm
+
+# ヤドン数を指定して起動（デフォルト4、範囲1-8）
+YADON_COUNT=6 uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm
 ```
 
-### yadon コマンドを使う場合
+### 開発時（リポジトリクローン後）
 
 ```bash
-# uv経由で実行
-uv run yadon start
+# リポジトリをクローン
+git clone https://github.com/ida29/yadon-agents.git
+cd yadon-agents
 
-# またはグローバルインストール済みの場合
-yadon start
+# 依存をインストール
+uv sync
+
+# start.sh を使う場合
+./start.sh --multi-llm
+
+# または yadon コマンドを使う場合
+uv run yadon start --multi-llm
+
+# ヤドン数を変更
+YADON_COUNT=6 ./start.sh --multi-llm
 ```
 
-これだけで以下が順に起動する:
+### グローバルインストール
 
-1. ヤドン1〜N（デスクトップペット or デーモン）
-2. ヤドラン（デスクトップペット or デーモン）
-3. ヤドキング（`claude --model opus` — 対話型、現在のターミナル）
-
-ヤドキングのプロンプトが表示されたら、自然言語でタスクを依頼するだけ。ヤドキング終了時にデーモン+ペットも自動停止する。
+頻繁に使う場合は uv tool install でグローバルインストール:
 
 ```bash
-# 作業ディレクトリを指定（デフォルト: カレントディレクトリ）
-./start.sh /path/to/project
+# 一度だけ実行
+uv tool install git+https://github.com/ida29/yadon-agents
 
-# ヤドンの数を変更（デフォルト4、範囲1-8）
-YADON_COUNT=6 ./start.sh
+# 以降はどこからでも
+yadon start --multi-llm
+YADON_COUNT=6 yadon start --multi-llm
+```
 
-# 手動停止
+### 停止
+
+```bash
+# uvx/uv tool install 起動時
+pkill -f yadon
+
+# 開発時（./start.sh 起動時）
 ./stop.sh
 ```
+
+ヤドキングのプロンプトが表示されたら、自然言語でタスクを依頼するだけ。ヤドキング終了時にデーモン+ペットも自動停止する。
 
 ## 仕組み
 

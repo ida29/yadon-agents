@@ -141,6 +141,63 @@ restart_daemons.sh
 
 ※ ヤドキング自身は再起動不要。デーモンだけ停止→再起動する。
 
+## 起動方法
+
+### 開発環境（リポジトリクローン済み）
+
+リポジトリをクローンしている場合、`start.sh` で起動：
+
+```bash
+cd /Users/yida/work/yadon-agents
+./start.sh [作業ディレクトリ]
+
+# マルチLLMモード（各ワーカーに異なるLLMを割り当て）
+./start.sh --multi-llm [作業ディレクトリ]
+
+# LLMバックエンド指定（claude / gemini / copilot / opencode）
+LLM_BACKEND=gemini ./start.sh
+
+# ヤドン数指定（デフォルト4、範囲1-8）
+YADON_COUNT=6 ./start.sh --multi-llm
+```
+
+### uvx での起動（インストール不要）
+
+クローンせずに直接実行する場合、uvx コマンドで起動可能：
+
+```bash
+# 通常起動（全員Claude）
+uvx --from git+https://github.com/ida29/yadon-agents yadon start
+
+# マルチLLMモード（各ワーカーに異なるLLMを割り当て）
+uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm
+
+# 作業ディレクトリ指定
+uvx --from git+https://github.com/ida29/yadon-agents yadon start /path/to/project
+
+# マルチLLMモード + 作業ディレクトリ
+uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm /path/to/project
+
+# ヤドン数を指定（環境変数）
+YADON_COUNT=6 uvx --from git+https://github.com/ida29/yadon-agents yadon start --multi-llm
+
+# LLMバックエンド指定
+LLM_BACKEND=gemini uvx --from git+https://github.com/ida29/yadon-agents yadon start
+```
+
+### 永続インストール（グローバル）
+
+頻繁に使う場合は `uv tool install` でグローバルインストール：
+
+```bash
+# 一度だけ実行
+uv tool install git+https://github.com/ida29/yadon-agents
+
+# 以降はどこからでも
+yadon start --multi-llm
+YADON_COUNT=6 yadon start --multi-llm /path/to/project
+```
+
 ## レスポンスの処理
 
 `send_task.sh` のレスポンスはJSON形式で返る：
