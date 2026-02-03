@@ -128,21 +128,12 @@ yadon start --multi-llm
 YADON_COUNT=6 yadon start --multi-llm
 ```
 
-### 停止
+### 停止 / 再起動 / その他コマンド
 
 ```bash
-# uvx/uv tool install 起動時
-pkill -f yadon
+# 停止
+yadon stop
 
-# 開発時
-pkill -f yadon
-```
-
-### コマンド一覧
-
-起動中のヤドンたちに指示を出す:
-
-```bash
 # ステータス確認
 yadon status
 
@@ -155,6 +146,8 @@ yadon say 2 "頑張ります" --type normal --duration 3000
 yadon say 3 "メッセージ"
 ```
 
+詳細な CLI コマンド仕様は CLAUDE.md の「CLIコマンド」セクションを参照。
+
 ヤドキングのプロンプトが表示されたら、自然言語でタスクを依頼するだけ。ヤドキング終了時にデーモン+ペットも自動停止する。
 
 ## 仕組み
@@ -166,6 +159,15 @@ yadon say 3 "メッセージ"
 5. 結果がヤドラン → ヤドキングへ返却され、人間に報告
 
 ## テスト実行
+
+### テスト実行結果
+
+**実行日**: 2026年2月4日
+**テスト総数**: 102
+**成功**: 102 (100%)
+**失敗**: 0 (0%)
+
+### テスト実行
 
 全テスト（102個）を実行:
 
@@ -184,6 +186,9 @@ python -m pytest tests/domain/ -v
 
 # インフラ層テスト
 python -m pytest tests/infra/ -v
+
+# 設定層テスト
+python -m pytest tests/config/ -v
 ```
 
 ファイル変更時の自動テスト:
@@ -191,6 +196,29 @@ python -m pytest tests/infra/ -v
 ```bash
 python -m pytest tests/ -v --tb=short --watch
 ```
+
+### テスト構成（102テスト）
+
+| モジュール | テストファイル | テスト数 | ステータス |
+|-----------|----------------|---------|-----------|
+| **agent** | `test_base.py` | 5 | ✅ All pass |
+| | `test_manager.py` | 9 | ✅ All pass |
+| | `test_worker.py` | 7 | ✅ All pass |
+| **config** | `test_llm.py` | 9 | ✅ All pass |
+| **domain** | `test_ascii_art.py` | 10 | ✅ All pass |
+| | `test_formatting.py` | 7 | ✅ All pass |
+| | `test_messages.py` | 9 | ✅ All pass |
+| | `test_theme.py` | 34 | ✅ All pass |
+| **infra** | `test_claude_runner.py` | 4 | ✅ All pass |
+| | `test_protocol.py` | 6 | ✅ All pass |
+| **合計** | | **102** | ✅ **全成功** |
+
+### テスト範囲
+
+- **Agent Layer**: ソケット通信、メッセージハンドリング、タスク分解、結果集約、ワーカータスク実行
+- **Config Layer**: LLMバックエンド設定、モデル階層、環境変数フォールバック
+- **Domain Layer**: テキスト要約、メッセージ型、ThemeConfig、スプライトビルダー、後方互換性
+- **Infra Layer**: Claude CLIランナー（subprocess実行、タイムアウト）、Unixソケット通信（作成・送受信・クリーンアップ）
 
 詳細は CLAUDE.md の「テスト」セクションを参照。
 
