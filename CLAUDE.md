@@ -508,6 +508,40 @@ check_status.sh yadon-1      # ヤドン1のみ
 pet_say.sh <yadon_number> <message> [bubble_type] [duration_ms]
 ```
 
+### git push（リモート送信）
+
+ローカルコミットをリモートリポジトリに送信する。
+
+```bash
+# 予行演習（実際には送信しない）
+git push --dry-run
+
+# 実行結果例：
+# To github.com:ida29/yadon-agents.git
+#    c2d477b..35847b7  main -> main
+```
+
+本番送信の場合：
+```bash
+# ローカルコミットをリモートに送信
+git push
+
+# 成功時の出力例：
+# Enumerating objects: 12, done.
+# Counting objects: 100% (12/12), done.
+# Delta compression using up to 12 threads
+# Compressing objects: 100% (6/6), done.
+# Writing objects: 100% (6/6), 1.23 KiB | 1.23 MiB/s, done.
+# Total 6 (delta 4), reused 0 (delta 0), pack-reused 0
+# To github.com:ida29/yadon-agents.git
+#    c2d477b..35847b7  main -> main
+```
+
+**参考:**
+- `git status` でリモートとの差分を確認
+- `git log --oneline -n 5` で最新コミット 5 つを確認
+- トラブル時は `git pull` で同期してから再度 `git push`
+
 ## 役割制御（PreToolUseフック）
 
 `AGENT_ROLE` 環境変数と `.claude/hooks/enforce-role.sh` により、役割に応じたツール実行制限を技術的に強制する。
