@@ -476,6 +476,7 @@ def cmd_internal_say(number: int, message: str, bubble_type: str = "info", durat
 def main() -> None:
     theme = get_theme()
     parser = argparse.ArgumentParser(description=f"{theme.display_name} CLI")
+    parser.add_argument("--multi-llm", action="store_true", help="マルチLLMモード有効（各ワーカーに異なるバックエンドを自動割り当て）")
     subparsers = parser.add_subparsers(dest="command")
 
     # start コマンド
@@ -528,13 +529,16 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # デフォルトコマンドは start
+    # デフォルトコマンドは start（yadon だけで起動可能）
     if args.command is None:
-        args.command = "start"
-        args.work_dir = str(Path.cwd())
+        work_dir = str(Path.cwd())
+        multi_llm = getattr(args, 'multi_llm', False)
+        cmd_start(work_dir, multi_llm=multi_llm)
+        return
 
     if args.command == "start":
         work_dir = str(Path(args.work_dir).resolve())
+        # start サブコマンドの --multi-llm またはグローバルの --multi-llm
         multi_llm = getattr(args, 'multi_llm', False)
         cmd_start(work_dir, multi_llm=multi_llm)
     elif args.command == "stop":
