@@ -144,12 +144,16 @@ yadon-agents/
 
 **リソース管理の設計判断：**
 - `serve_forever()` が try-finally で一元管理し、どの経路（正常終了・エラー・stop呼び出し）でも確実にリソース解放
-  - **try ブロック**: サーバーソケット作成（`proto.create_server_socket()`）→ `running = True` → メインループ（`while self.running`）
-  - **finally ブロック**: サーバーソケットのクローズ（`self.server_sock.close()`）と ファイルの削除（`proto.cleanup_socket()`）を一本化
+  - **外側 try ブロック（106-131行）**: サーバーソケット作成（`proto.create_server_socket()`）→ `running = True` → メインループ（`while self.running`）
+    - **内側 try-except（113-131行）**: ソケット受け入れ＆接続処理。タイムアウト例外（`socket.timeout`）は許容して継続、その他の OSError は break して外側 finally へ
+    - **接続処理（115-126行）**: `server_sock.accept()` でコネクション受け入れ → スレッド生成 → `thread.join()` で該接続処理終了まで待機（ブロッキング）
+  - **finally ブロック（132-135行）**: サーバーソケットのクローズ（`self.server_sock.close()`）と ファイルの削除（`proto.cleanup_socket()`）を一本化
   - **効果**: キープアライブされたファイルディスクリプタやソケットファイルが確実にクリーンアップされ、リスタート時の競合を防止
 - `serve_forever()` 内の while ループで `SOCKET_ACCEPT_TIMEOUT` を短く（デフォルト1秒）設定し、`running` フラグの変更を即座に検知可能に
 - `stop()` メソッドは `self.running = False` を設定するのみで責務を明確化。ソケットクローズ・ファイル削除は finally ブロックで一本化
 - この分離により、エージェント側から stop 呼び出ししても、メインループ終了時には必ず finally ブロックが実行され、リソースが確実に解放される
+  - **スレッド安全性**: `thread.join()` がブロッキング待機するため、handle_task() 中の外部リソース（ファイルハンドル、ネットワーク接続等）が確実に完了してから次の接続を処理
+  - **stop フロー**: `stop()` 呼び出し → `running = False` → while ループ脱出 → finally 実行 → リソース確実解放
 
 ### AgentThread
 
