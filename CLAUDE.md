@@ -432,6 +432,11 @@ YADON_COUNT=6 ./start.sh [作業ディレクトリ]
 `pyproject.toml` に定義された依存が自動解決され、`uv run` で実行時に適用される。
 start.sh は `uv run yadon start` のラッパーで、自動的に環境を構築・実行。
 
+**依存管理方針:**
+- **本体依存** — `[project] dependencies` で管理（PyQt6等）
+- **開発依存** — `[dependency-groups] dev` で管理（pytest等）。`optional-dependencies` は使用しない
+- 全ての依存は `[dependency-groups] dev` セクションで一元管理
+
 ### PID管理の撤去
 
 旧アーキテクチャでは複数のデーモンプロセスを PID ファイルで管理していた。
