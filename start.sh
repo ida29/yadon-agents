@@ -19,5 +19,4 @@ fi
 
 # uv環境で実行
 cd "$SCRIPT_DIR"
-WORK_DIR="${1:-$(pwd)}"
-exec uv run yadon start "$WORK_DIR"
+exec uv run yadon start "$@"

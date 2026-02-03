@@ -401,6 +401,12 @@ python -m pytest tests/ -v
 # ヤドン数を指定して起動（デフォルト4、範囲1-8）
 YADON_COUNT=6 ./start.sh [作業ディレクトリ]
 
+# マルチLLMモード起動（各ワーカーに異なるLLMバックエンドを割り当て）
+./start.sh --multi-llm
+
+# 作業ディレクトリ指定 + マルチLLMモード
+./start.sh /path/to/project --multi-llm
+
 # 停止（ヤドキング終了時に自動停止、手動停止も可）
 ./stop.sh
 
