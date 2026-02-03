@@ -25,7 +25,7 @@ from yadon_agents.domain.messages import (
     StatusResponse,
     TaskMessage,
 )
-from yadon_agents.domain.ports.claude_port import ClaudeRunnerPort
+from yadon_agents.domain.ports.llm_port import LLMRunnerPort
 from yadon_agents.domain.task_types import Phase, Subtask
 from yadon_agents.infra import protocol as proto
 from yadon_agents.infra.claude_runner import SubprocessClaudeRunner
@@ -116,7 +116,7 @@ class YadoranManager(BaseAgent):
     def __init__(
         self,
         project_dir: str | None = None,
-        claude_runner: ClaudeRunnerPort | None = None,
+        claude_runner: LLMRunnerPort | None = None,
     ):
         self.yadon_count = get_yadon_count()
         self.claude_runner = claude_runner or SubprocessClaudeRunner()
@@ -188,7 +188,7 @@ class YadoranManager(BaseAgent):
 - reviewフェーズでは、実装とドキュメントの品質・整合性を確認し、問題を指摘する
 """
         try:
-            output, _ = self.claude_runner.run(prompt=prompt, model="sonnet", cwd=project_dir, timeout=CLAUDE_DECOMPOSE_TIMEOUT)
+            output, _ = self.claude_runner.run(prompt=prompt, model_tier="manager", cwd=project_dir, timeout=CLAUDE_DECOMPOSE_TIMEOUT)
             data = _extract_json(output)
             phases: list[Phase] = data.get("phases", [])
             strategy = data.get("strategy", "")

@@ -16,7 +16,7 @@ from yadon_agents.config.agent import (
 )
 from yadon_agents.domain.formatting import summarize_for_bubble
 from yadon_agents.domain.messages import ResultMessage
-from yadon_agents.domain.ports.claude_port import ClaudeRunnerPort
+from yadon_agents.domain.ports.llm_port import LLMRunnerPort
 from yadon_agents.infra import protocol as proto
 from yadon_agents.infra.claude_runner import SubprocessClaudeRunner
 from yadon_agents.themes import get_theme
@@ -31,10 +31,10 @@ class YadonWorker(BaseAgent):
         self,
         number: int,
         project_dir: str | None = None,
-        claude_runner: ClaudeRunnerPort | None = None,
+        claude_runner: LLMRunnerPort | None = None,
     ):
         self.number = number
-        self.claude_runner = claude_runner or SubprocessClaudeRunner()
+        self.claude_runner = claude_runner or SubprocessClaudeRunner(worker_number=self.number)
         theme = get_theme()
         name = f"{theme.agent_role_worker}-{number}"
         sock_path = proto.agent_socket_path(name, prefix=theme.socket_prefix)
@@ -63,7 +63,7 @@ class YadonWorker(BaseAgent):
         task_summary = summarize_for_bubble(instruction, BUBBLE_TASK_MAX_LENGTH)
         self.bubble(theme.worker_task_bubble.format(summary=task_summary), "claude")
 
-        output, returncode = self.claude_runner.run(prompt=prompt, model="haiku", cwd=project_dir)
+        output, returncode = self.claude_runner.run(prompt=prompt, model_tier="worker", cwd=project_dir)
         status = "success" if returncode == 0 else "error"
         summary = output.strip()[:SUMMARY_MAX_LENGTH] if output.strip() else "(出力なし)"
 
