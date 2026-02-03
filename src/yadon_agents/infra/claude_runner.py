@@ -95,6 +95,7 @@ class SubprocessClaudeRunner(LLMRunnerPort):
         try:
             result = subprocess.run(
                 cmd,
+                input=prompt,
                 cwd=cwd,
                 capture_output=True,
                 text=True,
