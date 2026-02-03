@@ -85,9 +85,9 @@ BACKEND_CONFIGS: dict[str, LLMBackendConfig] = {
         name="opencode",
         command="opencode",
         models=LLMModelConfig(
-            coordinator="kimi/kimi-latest",
-            manager="kimi/kimi-latest",
-            worker="kimi/kimi-latest",
+            coordinator="kimi/kimi-k2.5",
+            manager="kimi/kimi-k2.5",
+            worker="kimi/kimi-k2.5",
         ),
         flags={"use_pipe": True},
         batch_subcommand="run -q",
