@@ -44,6 +44,13 @@ class LLMBackendConfig:
     batch_subcommand: str | None = None
     """バッチ実行時のサブコマンド（例: "run -q"）"""
 
+    batch_prompt_style: str = "stdin"
+    """バッチモードのプロンプト渡し方式:
+    - "stdin": -p フラグ + 標準入力（claude, copilot）
+    - "arg": --prompt "..." コマンドライン引数（gemini）
+    - "subcommand_stdin": サブコマンド + 標準入力（opencode）
+    """
+
 
 # --- バックエンド設定 ---
 
@@ -69,6 +76,7 @@ BACKEND_CONFIGS: dict[str, LLMBackendConfig] = {
         ),
         flags={"use_pipe": True},
         batch_subcommand=None,
+        batch_prompt_style="arg",
     ),
     "copilot": LLMBackendConfig(
         name="copilot",
@@ -91,6 +99,7 @@ BACKEND_CONFIGS: dict[str, LLMBackendConfig] = {
         ),
         flags={"use_pipe": True},
         batch_subcommand="run -q",
+        batch_prompt_style="subcommand_stdin",
     ),
     "claude-opus": LLMBackendConfig(
         name="claude-opus",

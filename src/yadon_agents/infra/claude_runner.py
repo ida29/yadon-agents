@@ -65,13 +65,25 @@ class SubprocessClaudeRunner(LLMRunnerPort):
         # コマンドを構築
         cmd = [backend_config.command]
 
-        # バッチモードの -p フラグを追加（Claude/Gemini/Copilot）
-        if backend_config.command in ("claude", "gemini", "copilot"):
-            cmd.insert(1, "-p")
-
         # バッチサブコマンドを追加（複数トークンの場合は分割）
         if backend_config.batch_subcommand:
             cmd.extend(backend_config.batch_subcommand.split())
+
+        # batch_prompt_style に応じてコマンドを構築
+        use_stdin = True
+        style = backend_config.batch_prompt_style
+
+        if style == "stdin":
+            # claude, copilot: -p フラグ + 標準入力
+            cmd.append("-p")
+            use_stdin = True
+        elif style == "arg":
+            # gemini: --prompt "..." コマンドライン引数
+            cmd.extend(["--prompt", prompt])
+            use_stdin = False
+        elif style == "subcommand_stdin":
+            # opencode: サブコマンド + 標準入力（サブコマンドは上で追加済み）
+            use_stdin = True
 
         cmd.extend(["--model", model])
 
@@ -84,18 +96,23 @@ class SubprocessClaudeRunner(LLMRunnerPort):
         if backend_config.command == "claude":
             cmd.append("--dangerously-skip-permissions")
 
+        # Gemini専用フラグ（yoloモード）
+        if backend_config.command == "gemini":
+            cmd.append("--yolo")
+
         logger.info(
-            "%s -p 実行中 (tier=%s, model=%s): %s...",
+            "%s batch 実行中 (tier=%s, model=%s, style=%s): %s...",
             backend_config.command,
             model_tier,
             model,
+            style,
             prompt[:80],
         )
 
         try:
             result = subprocess.run(
                 cmd,
-                input=prompt,
+                input=prompt if use_stdin else None,
                 cwd=cwd,
                 capture_output=True,
                 text=True,
