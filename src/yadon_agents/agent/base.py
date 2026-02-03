@@ -104,34 +104,35 @@ class BaseAgent(AgentPort):
             conn.close()
 
     def serve_forever(self) -> None:
-        self.server_sock = proto.create_server_socket(self.sock_path)
-        self.running = True
-        logger.info("%s 起動: %s", self.name, self.sock_path)
+        try:
+            self.server_sock = proto.create_server_socket(self.sock_path)
+            self.running = True
+            logger.info("%s 起動: %s", self.name, self.sock_path)
 
-        while self.running:
-            try:
-                self.server_sock.settimeout(SOCKET_ACCEPT_TIMEOUT)
+            while self.running:
                 try:
-                    conn, _ = self.server_sock.accept()
-                except socket.timeout:
-                    continue
+                    self.server_sock.settimeout(SOCKET_ACCEPT_TIMEOUT)
+                    try:
+                        conn, _ = self.server_sock.accept()
+                    except socket.timeout:
+                        continue
 
-                thread = threading.Thread(
-                    target=self.handle_connection,
-                    args=(conn,),
-                    daemon=True,
-                )
-                thread.start()
-                thread.join()
+                    thread = threading.Thread(
+                        target=self.handle_connection,
+                        args=(conn,),
+                        daemon=True,
+                    )
+                    thread.start()
+                    thread.join()
 
-            except OSError:
-                if self.running:
-                    logger.error("ソケットエラー")
-                break
+                except OSError:
+                    if self.running:
+                        logger.error("ソケットエラー")
+                    break
+        finally:
+            if self.server_sock:
+                self.server_sock.close()
+            proto.cleanup_socket(self.sock_path)
 
     def stop(self) -> None:
         self.running = False
-        if self.server_sock:
-            self.server_sock.close()
-        proto.cleanup_socket(self.sock_path)
-        logger.info("%s 停止", self.name)

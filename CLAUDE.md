@@ -66,7 +66,7 @@ yadon-agents/
 │       │       └── claude_port.py   # ClaudeRunnerPort ABC
 │       │
 │       ├── agent/                    # アプリケーション層（エージェントロジック）
-│       │   ├── base.py              # BaseAgent(AgentPort): ソケットサーバーループ + on_bubble callback
+│       │   ├── base.py              # BaseAgent(AgentPort): ソケットサーバーループ + on_bubble callback + try-finallyリソース管理
 │       │   ├── worker.py            # YadonWorker(BaseAgent): claude haiku実行（ClaudeRunnerPort DI）
 │       │   └── manager.py           # YadoranManager(BaseAgent): 3フェーズ分解 + 並列dispatch + 集約（ClaudeRunnerPort DI）
 │       │
@@ -137,10 +137,16 @@ yadon-agents/
 
 `YadonWorker` / `YadoranManager` は `claude_runner: ClaudeRunnerPort | None = None` を受け取り、未指定時は `SubprocessClaudeRunner()` をデフォルト生成する。テスト時にはモックを注入可能。
 
-### BaseAgent + on_bubble callback
+### BaseAgent + on_bubble callback とリソース管理
 
 `BaseAgent(AgentPort)` の `on_bubble: BubbleCallback | None` で吹き出し通知を抽象化。
 `AgentThread` が `on_bubble` を pyqtSignal に接続し、GUI層と連携する。
+
+**リソース管理の設計判断：**
+- `serve_forever()` が try-finally で一元管理し、どの経路（正常終了・エラー・stop呼び出し）でも確実にリソース解放
+- `serve_forever()` 内の while ループで `SOCKET_ACCEPT_TIMEOUT` を短く（デフォルト1秒）設定し、`running` フラグの変更を即座に検知可能に
+- `stop()` メソッドは `self.running = False` を設定するのみで責務を明確化。ソケットクローズ・ファイル削除は finally ブロックで一本化
+- この分離により、エージェント側から stop 呼び出ししても、メインループ終了時には必ず finally ブロックが実行され、リソークが確実に解放される
 
 ### AgentThread
 
