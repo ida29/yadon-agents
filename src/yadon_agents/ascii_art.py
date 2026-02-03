@@ -24,8 +24,16 @@ def rgb_to_ansi256(hex_color: str) -> int:
     return 16 + 36 * r_idx + 6 * g_idx + b_idx
 
 
-def print_yadon_sprite(pixel_data: list[list[str]]) -> None:
+def print_yadon_sprite(pixel_data: list[list[str]] | None = None) -> None:
     """ヤドンのドット絵をターミナルに表示"""
+    if pixel_data is None:
+        # テーマ非依存のビルダーでスプライトを構築
+        from yadon_agents.themes import get_theme, get_worker_sprite_builder
+
+        theme = get_theme()
+        builder = get_worker_sprite_builder()
+        pixel_data = builder("normal", theme.worker_color_schemes)
+
     for row in pixel_data:
         for pixel in row:
             if pixel == "#FFFFFF":
@@ -40,14 +48,6 @@ def print_yadon_sprite(pixel_data: list[list[str]]) -> None:
 
 def show_yadon_ascii() -> None:
     """起動時にヤドンを表示"""
-    from yadon_agents.themes import get_theme, get_worker_sprite_builder
-
-    theme = get_theme()
-
-    # ヤドンのドット絵を構築
-    build_pixel_data = get_worker_sprite_builder()
-    pixel_data = build_pixel_data("normal", theme.worker_color_schemes)
-
     print()
-    print_yadon_sprite(pixel_data)
+    print_yadon_sprite()  # テーマ非依存のビルダーを内部で使用
     print()

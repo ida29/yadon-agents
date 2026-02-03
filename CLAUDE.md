@@ -162,9 +162,9 @@ YadonPet / YadoranPet はコンストラクタで `agent_thread` と `pet_sock_p
 - `rgb_to_ansi256()` — RGB hex色（`#RRGGBB`）をANSI 256色パレット（16-231の6×6×6カラーキューブ）に近似変換
 
 **フロー:**
-1. テーマから `build_worker_pixel_data()` でドット絵ピクセル配列を構築（各色は`#RRGGBB`hex形式）
-2. 各ピクセルをANSI256コードに変換（`rgb_to_ansi256()`）
-3. ターミナルに背景色付きブロック（`\033[48;5;Nけ`）で描画
+1. テーマから `get_theme()` でテーマオブジェクトを取得し、`get_worker_sprite_builder()` でスプライトビルダーを取得。ビルダーを `"normal"` ステート + `theme.worker_color_schemes` で呼び出し、ドット絵ピクセル配列を構築（各色は`#RRGGBB`hex形式）
+2. ピクセルデータを行単位でループし、各ピクセルを処理：白色（`#FFFFFF`）は透明として2文字スペース、その他は `rgb_to_ansi256()` でANSI256コードに変換
+3. ターミナルに背景色付きブロック（`\033[48;5;{ansi_code}m  \033[0m`：2文字幅で正方形に見える）で描画、各行末で改行
 
 ### gui_daemon.py — GUIデーモン
 
