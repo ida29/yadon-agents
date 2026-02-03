@@ -57,15 +57,38 @@ def get_yadon_count() -> int:
 
 
 def get_yadon_messages(n: int) -> list[str]:
-    """ワーカーnのメッセージリストを返す。"""
+    """ワーカーnのメッセージリストを返す。
+
+    新形式では worker_messages[n] は dict[str, list[str]] なので、
+    全メッセージタイプを結合して返す。
+    """
     t = _theme()
     if n in t.worker_messages:
-        return t.worker_messages[n]
+        msgs_dict = t.worker_messages[n]
+        # dict か list かを判定して対応
+        if isinstance(msgs_dict, dict):
+            # 新形式: task, success, error, random を結合
+            result = []
+            for key in ["task", "success", "error", "random"]:
+                result.extend(msgs_dict.get(key, []))
+            return result
+        else:
+            # 後方互換: 古い形式（リスト）をそのまま返す
+            return msgs_dict
     base_count = len(t.worker_messages)
     if base_count == 0:
         return []
     base = ((n - 1) % base_count) + 1
-    return t.worker_messages.get(base, [])
+    fallback = t.worker_messages.get(base, [])
+    if isinstance(fallback, dict):
+        # 新形式のフォールバック
+        result = []
+        for key in ["task", "success", "error", "random"]:
+            result.extend(fallback.get(key, []))
+        return result
+    else:
+        # 後方互換
+        return fallback
 
 
 def get_yadon_variant(n: int) -> str:
@@ -119,7 +142,7 @@ YARUKI_SWITCH_ON_MESSAGE: str
 YARUKI_SWITCH_OFF_MESSAGE: str
 YARUKI_MENU_ON_TEXT: str
 YARUKI_MENU_OFF_TEXT: str
-YADON_MESSAGES: dict[int, list[str]]
+YADON_MESSAGES: dict[int, dict[str, list[str]]]
 YADORAN_MESSAGES: list[str]
 YADORAN_WELCOME_MESSAGES: list[str]
 PHASE_LABELS: dict[str, str]

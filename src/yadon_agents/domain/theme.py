@@ -52,10 +52,16 @@ class ThemeConfig:
     # ワーカー設定
     worker_count: WorkerCountConfig = field(default_factory=WorkerCountConfig)
 
-    # ワーカーメッセージ (番号 -> メッセージリスト)
-    worker_messages: dict[int, list[str]] = field(default_factory=dict)
-    # マネージャーメッセージ
+    # ワーカーメッセージ (番号 -> {task, success, error, random のメッセージリスト})
+    worker_messages: dict[int, dict[str, list[str]]] = field(default_factory=dict)
+    # マネージャーメッセージ（タスク受信時）
     manager_messages: list[str] = field(default_factory=list)
+    # マネージャーフェーズメッセージ
+    manager_phase_messages: list[str] = field(default_factory=list)
+    # マネージャー成功メッセージ
+    manager_success_messages: list[str] = field(default_factory=list)
+    # マネージャーエラーメッセージ
+    manager_error_messages: list[str] = field(default_factory=list)
     # 共通メッセージ
     random_messages: list[str] = field(default_factory=list)
     welcome_messages: list[str] = field(default_factory=list)
