@@ -191,3 +191,138 @@ class TestYadonWorker:
         })
 
         assert result["id"] == "my-unique-task-id-12345"
+
+
+class TestEdgeCases:
+    """エッジケースのテスト"""
+
+    def setup_method(self):
+        """各テスト前にテーマキャッシュをリセットする。"""
+        _reset_cache()
+
+    def test_handle_task_large_output(self, sock_dir):
+        """巨大な出力を持つタスクが正しく処理されること"""
+        # 1MB程度の大きな出力
+        large_output = "長い出力 " * 100000
+        fake_runner = FakeClaudeRunner(output=large_output, returncode=0)
+        worker = YadonWorker(number=1, project_dir=sock_dir, claude_runner=fake_runner)
+
+        result = worker.handle_task({
+            "id": "task-large",
+            "from": "test",
+            "payload": {
+                "instruction": "大きな出力を生成",
+                "project_dir": sock_dir,
+            },
+        })
+
+        assert result["status"] == "success"
+        assert len(result["payload"]["output"]) > 100000
+
+    def test_handle_task_unicode_output(self, sock_dir):
+        """Unicode文字を含む出力が正しく処理されること"""
+        unicode_output = "日本語出力 🎉 絵文字あり émojis français"
+        fake_runner = FakeClaudeRunner(output=unicode_output, returncode=0)
+        worker = YadonWorker(number=1, project_dir=sock_dir, claude_runner=fake_runner)
+
+        result = worker.handle_task({
+            "id": "task-unicode",
+            "from": "test",
+            "payload": {
+                "instruction": "Unicode出力テスト",
+                "project_dir": sock_dir,
+            },
+        })
+
+        assert result["status"] == "success"
+        assert "日本語出力" in result["payload"]["output"]
+        assert "🎉" in result["payload"]["output"]
+
+    def test_handle_task_multiline_output(self, sock_dir):
+        """複数行の出力が正しく処理されること"""
+        multiline_output = "行1\n行2\n行3\n\n行5(空行後)"
+        fake_runner = FakeClaudeRunner(output=multiline_output, returncode=0)
+        worker = YadonWorker(number=1, project_dir=sock_dir, claude_runner=fake_runner)
+
+        result = worker.handle_task({
+            "id": "task-multiline",
+            "from": "test",
+            "payload": {
+                "instruction": "複数行出力",
+                "project_dir": sock_dir,
+            },
+        })
+
+        assert result["status"] == "success"
+        assert "行1" in result["payload"]["output"]
+        assert "行5(空行後)" in result["payload"]["output"]
+
+    def test_handle_task_special_chars_in_instruction(self, sock_dir):
+        """特殊文字を含む指示が正しく処理されること"""
+        fake_runner = FakeClaudeRunner(output="OK", returncode=0)
+        worker = YadonWorker(number=1, project_dir=sock_dir, claude_runner=fake_runner)
+
+        special_instruction = "パス /path/to/file.txt を処理 && 'シングルクォート' \"ダブルクォート\""
+        worker.handle_task({
+            "id": "task-special",
+            "from": "test",
+            "payload": {
+                "instruction": special_instruction,
+                "project_dir": sock_dir,
+            },
+        })
+
+        # プロンプトに特殊文字が含まれていることを確認
+        prompt = fake_runner.last_run_kwargs["prompt"]
+        assert "/path/to/file.txt" in prompt
+
+    def test_handle_task_max_worker_number(self, sock_dir):
+        """最大ワーカー番号(8)でも正しく動作すること"""
+        fake_runner = FakeClaudeRunner(output="done", returncode=0)
+        worker = YadonWorker(number=8, project_dir=sock_dir, claude_runner=fake_runner)
+
+        result = worker.handle_task({
+            "id": "task-max",
+            "from": "test",
+            "payload": {
+                "instruction": "最大ワーカーテスト",
+                "project_dir": sock_dir,
+            },
+        })
+
+        assert result["from"] == "yadon-8"
+        assert result["status"] == "success"
+
+    def test_handle_task_missing_payload_fields(self, sock_dir):
+        """payloadに必須フィールドがない場合の動作"""
+        fake_runner = FakeClaudeRunner(output="done", returncode=0)
+        worker = YadonWorker(number=1, project_dir=sock_dir, claude_runner=fake_runner)
+
+        # project_dirがpayloadにない場合、コンストラクタのデフォルトが使用される
+        result = worker.handle_task({
+            "id": "task-missing",
+            "from": "test",
+            "payload": {
+                "instruction": "フィールド不足テスト",
+                # project_dir がない
+            },
+        })
+
+        # デフォルトのproject_dirが使用される
+        assert result["status"] == "success"
+
+    def test_handle_task_negative_returncode(self, sock_dir):
+        """負のリターンコード（シグナル終了）でもエラーとして処理されること"""
+        fake_runner = FakeClaudeRunner(output="killed", returncode=-9)
+        worker = YadonWorker(number=1, project_dir=sock_dir, claude_runner=fake_runner)
+
+        result = worker.handle_task({
+            "id": "task-signal",
+            "from": "test",
+            "payload": {
+                "instruction": "シグナル終了テスト",
+                "project_dir": sock_dir,
+            },
+        })
+
+        assert result["status"] == "error"

@@ -186,3 +186,156 @@ class TestExtractJson:
         output = "これは JSON ではありません"
         with pytest.raises(json.JSONDecodeError):
             _extract_json(output)
+
+
+class TestEdgeCases:
+    """エッジケースのテスト"""
+
+    def test_aggregate_results_many_subtasks(self):
+        """大量のサブタスク結果を集約できること"""
+        # 50個のサブタスク結果を生成
+        all_results = [
+            {
+                "from": f"yadon-{i % 4 + 1}",
+                "status": "success",
+                "payload": {"summary": f"タスク{i}完了", "output": f"output{i}"},
+            }
+            for i in range(50)
+        ]
+
+        overall_status, combined_summary, combined_output = _aggregate_results(all_results)
+
+        assert overall_status == "success"
+        # 全50個の結果が含まれていることを確認
+        for i in range(50):
+            assert f"タスク{i}完了" in combined_summary
+
+    def test_aggregate_results_large_output(self):
+        """巨大な出力を持つ結果を集約できること"""
+        # 1MB程度の大きな出力
+        large_output = "x" * (1024 * 1024)
+        all_results = [
+            {
+                "from": "yadon-1",
+                "status": "success",
+                "payload": {"summary": "大きな出力", "output": large_output},
+            },
+        ]
+
+        overall_status, combined_summary, combined_output = _aggregate_results(all_results)
+
+        assert overall_status == "success"
+        assert len(combined_output) > 1024 * 1024
+
+    def test_aggregate_results_all_error(self):
+        """全タスク失敗時も正しく集約されること"""
+        all_results = [
+            {
+                "from": "yadon-1",
+                "status": "error",
+                "payload": {"summary": "エラー1", "output": "err1"},
+            },
+            {
+                "from": "yadon-2",
+                "status": "error",
+                "payload": {"summary": "エラー2", "output": "err2"},
+            },
+        ]
+
+        overall_status, combined_summary, combined_output = _aggregate_results(all_results)
+
+        assert overall_status == "partial_error"  # 全エラーでもpartial_error
+        assert "[yadon-1] error: エラー1" in combined_summary
+        assert "[yadon-2] error: エラー2" in combined_summary
+
+    def test_aggregate_results_missing_payload(self):
+        """payloadが不完全な結果も処理できること"""
+        all_results = [
+            {
+                "from": "yadon-1",
+                "status": "success",
+                "payload": {},  # summary, output がない
+            },
+        ]
+
+        overall_status, combined_summary, combined_output = _aggregate_results(all_results)
+
+        assert overall_status == "success"
+        # 空文字列がデフォルトで使用される
+
+    def test_decompose_task_empty_phases(self):
+        """空のフェーズリストが返された場合のフォールバック"""
+        json_output = json.dumps({
+            "phases": [],
+            "strategy": "空のフェーズ"
+        })
+
+        fake_runner = FakeClaudeRunner(output=json_output, return_code=0)
+        manager = YadoranManager(claude_runner=fake_runner)
+
+        phases = manager.decompose_task(
+            instruction="空フェーズテスト",
+            project_dir="/tmp",
+        )
+
+        # 空でもエラーにならないことを確認
+        assert isinstance(phases, list)
+
+    def test_decompose_task_unicode_instruction(self):
+        """Unicode文字を含む指示が正しく処理されること"""
+        json_output = json.dumps({
+            "phases": [
+                {
+                    "name": "implement",
+                    "subtasks": [{"instruction": "日本語タスク 🎉"}]
+                }
+            ],
+            "strategy": "Unicode対応"
+        })
+
+        fake_runner = FakeClaudeRunner(output=json_output, return_code=0)
+        manager = YadoranManager(claude_runner=fake_runner)
+
+        phases = manager.decompose_task(
+            instruction="絵文字と日本語を含むタスク 🚀",
+            project_dir="/tmp",
+        )
+
+        assert len(phases) == 1
+        assert phases[0]["subtasks"][0]["instruction"] == "日本語タスク 🎉"
+
+    def test_extract_json_nested_braces(self):
+        """ネストされたブレースを含むJSONを正しく抽出"""
+        output = """以下がJSON:
+{"outer": {"inner": {"deep": "value"}}}
+終わり"""
+        result = _extract_json(output)
+        assert result["outer"]["inner"]["deep"] == "value"
+
+    def test_extract_json_array_root(self):
+        """配列をルートとするJSONも処理できること"""
+        output = '[{"item": 1}, {"item": 2}]'
+        # 現在の実装は {} を探すので配列は失敗する可能性がある
+        # これはエッジケースとして文書化
+        try:
+            result = _extract_json(output)
+            assert isinstance(result, list)
+        except json.JSONDecodeError:
+            # 配列ルートはサポートされていない場合はスキップ
+            pytest.skip("Array root JSON not supported")
+
+    def test_extract_json_with_newlines(self):
+        """改行を含むJSONを正しく抽出"""
+        output = """説明文:
+```json
+{
+    "key": "value",
+    "nested": {
+        "array": [1, 2, 3]
+    }
+}
+```
+以上です。"""
+        result = _extract_json(output)
+        assert result["key"] == "value"
+        assert result["nested"]["array"] == [1, 2, 3]

@@ -23,6 +23,13 @@ yadon_agents.instructions = ["*.md"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "platform_linux: Linux固有のテスト",
+    "platform_darwin: macOS固有のテスト",
+    "platform_windows: Windows固有のテスト",
+    "slow: 時間のかかるテスト",
+    "integration: 統合テスト",
+]
 
 [dependency-groups]
 dev = [
