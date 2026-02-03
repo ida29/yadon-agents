@@ -40,13 +40,13 @@ def print_yadon_sprite(pixel_data: list[list[str]]) -> None:
 
 def show_yadon_ascii() -> None:
     """起動時にヤドンを表示"""
-    from yadon_agents.themes import get_theme
-    from yadon_agents.themes.yadon.sprites import build_worker_pixel_data
+    from yadon_agents.themes import get_theme, get_worker_sprite_builder
 
     theme = get_theme()
 
     # ヤドンのドット絵を構築
-    pixel_data = build_worker_pixel_data("normal", theme.worker_color_schemes)
+    build_pixel_data = get_worker_sprite_builder()
+    pixel_data = build_pixel_data("normal", theme.worker_color_schemes)
 
     print()
     print_yadon_sprite(pixel_data)
