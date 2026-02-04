@@ -27,3 +27,8 @@ uv.lock
 
 # Pytest cache
 .pytest_cache/
+.coverage
+
+# Memory (local learning log)
+memory/*
+!memory/.gitkeep
