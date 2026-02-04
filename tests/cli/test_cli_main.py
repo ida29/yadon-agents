@@ -34,7 +34,8 @@ class TestWaitSockets:
         sock1.touch()
         sock2.touch()
 
-        with patch("yadon_agents.cli.agent_socket_path") as mock_path:
+        # _wait_sockets内部でimportされるagent_socket_pathをモック
+        with patch("yadon_agents.infra.protocol.agent_socket_path") as mock_path:
             # パスをモック
             def path_factory(name: str, prefix: str = "yadon") -> str:
                 return str(tmp_path / f"{prefix}-agent-{name}.sock")
@@ -91,7 +92,8 @@ class TestWaitSockets:
         import threading
         thread = threading.Thread(target=create_socket_after_delay)
 
-        with patch("yadon_agents.cli.agent_socket_path") as mock_path:
+        # _wait_sockets内部でimportされるagent_socket_pathをモック
+        with patch("yadon_agents.infra.protocol.agent_socket_path") as mock_path:
             mock_path.return_value = str(sock_path)
 
             thread.start()
