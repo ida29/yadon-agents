@@ -160,69 +160,11 @@ yadon say 3 "メッセージ"
 4. 各フェーズ内のサブタスクをヤドンたちが並列実行
 5. 結果がヤドラン → ヤドキングへ返却され、人間に報告
 
-## テスト実行
-
-### テスト実行結果
-
-**実行日**: 2026年2月4日
-**テスト総数**: 102
-**成功**: 102 (100%)
-**失敗**: 0 (0%)
-
-### テスト実行
-
-全テスト（102個）を実行:
+## テスト
 
 ```bash
 python -m pytest tests/ -v
 ```
-
-特定のテストモジュールのみ実行:
-
-```bash
-# エージェント層テスト
-python -m pytest tests/agent/ -v
-
-# ドメイン層テスト
-python -m pytest tests/domain/ -v
-
-# インフラ層テスト
-python -m pytest tests/infra/ -v
-
-# 設定層テスト
-python -m pytest tests/config/ -v
-```
-
-ファイル変更時の自動テスト:
-
-```bash
-python -m pytest tests/ -v --tb=short --watch
-```
-
-### テスト構成（102テスト）
-
-| モジュール | テストファイル | テスト数 | ステータス |
-|-----------|----------------|---------|-----------|
-| **agent** | `test_base.py` | 5 | ✅ All pass |
-| | `test_manager.py` | 9 | ✅ All pass |
-| | `test_worker.py` | 7 | ✅ All pass |
-| **config** | `test_llm.py` | 9 | ✅ All pass |
-| **domain** | `test_ascii_art.py` | 10 | ✅ All pass |
-| | `test_formatting.py` | 7 | ✅ All pass |
-| | `test_messages.py` | 9 | ✅ All pass |
-| | `test_theme.py` | 34 | ✅ All pass |
-| **infra** | `test_claude_runner.py` | 4 | ✅ All pass |
-| | `test_protocol.py` | 6 | ✅ All pass |
-| **合計** | | **102** | ✅ **全成功** |
-
-### テスト範囲
-
-- **Agent Layer**: ソケット通信、メッセージハンドリング、タスク分解、結果集約、ワーカータスク実行
-- **Config Layer**: LLMバックエンド設定、モデル階層、環境変数フォールバック
-- **Domain Layer**: テキスト要約、メッセージ型、ThemeConfig、スプライトビルダー、後方互換性
-- **Infra Layer**: Claude CLIランナー（subprocess実行、タイムアウト）、Unixソケット通信（作成・送受信・クリーンアップ）
-
-詳細は CLAUDE.md の「テスト」セクションを参照。
 
 ## セキュリティ上の注意
 
