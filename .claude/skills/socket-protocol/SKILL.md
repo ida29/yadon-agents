@@ -1,6 +1,6 @@
 ---
 name: socket-protocol
-description: ソケット通信のデバッグ・メッセージ形式変更時に使用
+description: ソケット通信のデバッグ・メッセージ形式変更時に使用。Unix socket通信の問題解決やプロトコル拡張時に参照。
 ---
 
 # Unixドメインソケット通信プロトコル

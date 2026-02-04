@@ -1,1 +1,24 @@
-{}
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest*)",
+      "Bash(uv run*)",
+      "Bash(uv tool*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git status*)",
+      "Bash(yadon*)",
+      "Bash(ls*)",
+      "Bash(wc*)",
+      "Bash(cat*)",
+      "Bash(head*)",
+      "Bash(tail*)"
+    ],
+    "deny": [
+      "Read(.env*)",
+      "Read(credentials*)",
+      "Bash(rm -rf /*)"
+    ]
+  },
+  "hooks": {}
+}

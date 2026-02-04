@@ -1,20 +1,25 @@
-# グローバルコンテキスト
+# ヤドン・エージェント Learning Log
 
-## システム情報
+## Session Learnings
 
-- **システム名**: ヤドン・エージェント
-- **アーキテクチャ**: Unixドメインソケット通信
+### Common Mistakes Caught & Fixed
+- Socket cleanup timing（must use finally blocks）
+- JSON parsing edge cases（地の文混在対応 in _extract_json）
+- PyQt6 thread safety（use pyqtSignal, not direct callbacks）
+- Theme cache reset in tests（PIXEL_DATA_CACHE.clear() in setup_method）
 
-## 運用ルール
+### Performance Notes
+- Tests complete in ~0.08s（102 tests）
+- CLAUDE.md reduced from 70KB to 8KB for better performance
 
-- ヤドキングが学んだ重要な知識を記録する
-- プロジェクト固有の注意事項を記録する
-- コンパクション復帰時に参照する
+### Debugging Commands
+- Check agent status: yadon status
+- View socket files: ls -la /tmp/yadon-*.sock
+- Tail logs: tail -f ~/.yadon-agents/logs/*.log
+- Run tests: python -m pytest tests/ -v
 
-## 学習した知識
-
-（ヤドキングが学んだことをここに記録）
-
-## 注意事項
-
-（忘れてはいけないことを記録）
+### Architecture Decisions
+- Port & Adapter pattern for LLM runner injection
+- BaseAgent try-finally for resource cleanup
+- 3-phase task decomposition (implement → docs → review)
+- GUI daemon separated from CLI process

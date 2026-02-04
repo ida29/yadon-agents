@@ -1,6 +1,6 @@
 ---
 name: llm-backend
-description: LLMバックエンドの追加・変更・マルチLLMモード設定時に使用
+description: LLMバックエンド設定やマルチLLMモードの設定時に使用。Claude/Gemini/Copilot/OpenCodeの切り替えやワーカー個別設定時に参照。
 disable-model-invocation: true
 user-invocable: false
 ---
